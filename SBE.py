@@ -1,29 +1,20 @@
+#! /usr/bin/env python
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.constants as constants
+from unit_conversion import eV_to_au, angstrom_to_bohr, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au
 
 class BandStructure:
 
     def __init__(self, Ec, Ev, tc, tv, a):
         """give inputs in eV, angstrom"""
-        self.Ec = self._eVtoHartree(Ec)
-        self.Ev = self._eVtoHartree(Ev)
-        self.tc = self._eVtoHartree(tc)
-        self.tv = self._eVtoHartree(tv)
-        self.a = self._angstrom_to_bohr(a)
+        self.Ec = eV_to_au(Ec)
+        self.Ev = eV_to_au(Ev)
+        self.tc = eV_to_au(tc)
+        self.tv = eV_to_au(tv)
+        self.a = angstrom_to_bohr(a)
     
-    def _eVtoHartree(self, val, reverse=False):
-        if reverse:
-            new_val = val *constants.physical_constants['Hartree energy in eV'][0]
-        else:
-            new_val = val / constants.physical_constants['Hartree energy in eV'][0]
-        return new_val
-    
-    def _angstrom_to_bohr(self, val):
-        bohr_radius_in_meters = constants.physical_constants['Bohr radius'][0]  # in meters
-        angstrom_in_meters = constants.angstrom  # 1 Å = 1e-10 m
-        return val * angstrom_in_meters / bohr_radius_in_meters
     
     def _get_H_mat(self, k):
         H = np.zeros((2,2, len(k)))
@@ -50,53 +41,51 @@ use runge kutta to integrate in time
 class Simulation:
 
     def __init__(self, t_end, n_steps):
-        """t_end in hbar/Eh """
+        """t-end in fs"""
+        t_end = fs_to_au(t_end)
         self.time = np.linspace(0, t_end, n_steps)
     
     def make_step(self):
         pass
 
-    def define_pulse(self, sigma, lam, t_start):
-        """lam in nm, sigma in Eh/hbar"""
-        omega = self._angular_frequency_au(lam) 
-        self.E_field = np.sin(omega * self.time) * np.exp(-(self.time - t_start)**2 / (2 * sigma**2) )
+    def define_pulse(self, sigma, lam, t_start, Enull):
+        """lam in nm, sigma in fs, Enull in V/m"""
+        t_start = fs_to_au(t_start)
+        sigma = fs_to_au(sigma)
+        lam = nm_to_au(lam)
+        omega = lam_to_omega(lam) 
+        Enull = Vpm_to_au(Enull)
+        self.E_field = Enull * np.sin(omega * self.time) * np.exp(-(self.time - t_start)**2 / (2 * sigma**2) )
 
     def define_system(self, num_k, a):
-        """a in a_0"""
+        """a in angstrom"""
+        a = angstrom_to_bohr(a)
         self.k_list = np.linspace(-np.pi/a, np.pi/a, num_k)
         self.dens_mat = np.zeros((len(self.time), num_k, 2, 2))
+        self.dens_mat[0, :,0 ,0] = 1 # fully populate conduction band 
 
 
     def plot_pulse(self):
         fig, ax = plt.subplots()
-        ax.plot(self.time, self.E_field)
-        ax.set_xlabel(r"t/$\hbar E_h^{-1}$")
-        ax.set_ylabel(r"E/$E_h e^{-1} a_0^{-1}$")
+        time = au_to_fs(self.time)
+        E = au_to_Vpm(self.E_field)
+        ax.plot(time, E)
+        ax.set_xlabel("t/fs")
+        ax.set_ylabel(r"E/$Vm^{-1}$")
         plt.show()
 
+class DensityMatrix:
 
-
-    def _angular_frequency_au(self, wavelength_nm):
-        # Constants
-        c_au = 137.035999084  # speed of light in atomic units
-        bohr_radius_m = constants.physical_constants['Bohr radius'][0]  # in meters
-
-        # Convert wavelength from nm to atomic units
-        wavelength_m = wavelength_nm * constants.nano  # nm to meters
-        wavelength_au = wavelength_m / bohr_radius_m
-
-        # Compute angular frequency in atomic units
-        omega_au = 2 * np.pi * c_au / wavelength_au
-        return omega_au
-
-
-
+    def __init__(self, k_list, a, time):
+        self.k_list = k_list
+        self.a = a
+        self.time = time
 
 
 if __name__ =="__main__":
     ZnO = BandStructure(Ec=4, Ev=-3, tc=-1.5, tv=0.5, a=2) #5.16
     # ZnO.plot_bands(num_k=40)
-    sim = Simulation(t_end=20*41, n_steps=1000)
-    sim.define_pulse(sigma=80, lam=774, t_start=300)
+    sim = Simulation(t_end=30, n_steps=1000)
+    sim.define_pulse(sigma=3, lam=774, t_start=11, Enull=1)
     sim.define_system(num_k=100, a=9.8) 
-
+    sim.plot_pulse()
