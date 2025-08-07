@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.constants as constants
 from unit_conversion import eV_to_au, angstrom_to_bohr, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au
+from scipy.integrate import solve_ivp
 
 class BandStructure:
 
@@ -50,28 +51,42 @@ class Simulation:
 
     def define_pulse(self, sigma, lam, t_start, Enull):
         """lam in nm, sigma in fs, Enull in V/m"""
-        t_start = fs_to_au(t_start)
-        sigma = fs_to_au(sigma)
+        self.t_start = fs_to_au(t_start)
+        self.sigma = fs_to_au(sigma)
         lam = nm_to_au(lam)
-        omega = lam_to_omega(lam) 
-        Enull = Vpm_to_au(Enull)
-        self.E_field = Enull * np.sin(omega * self.time) * np.exp(-(self.time - t_start)**2 / (2 * sigma**2) )
+        self.omega = lam_to_omega(lam) 
+        self.E_null = Vpm_to_au(Enull)
+        self.E_field = self.E_null * np.sin(self.omega * self.time) #* np.exp(-(self.time - self.t_start)**2 / (2 * self.sigma**2) )
+
+    def get_vector_potential(self):
+        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_start, self.E_null)
+        solution = solve_ivp(f, (self.time[0], self.time[-1]), [0], t_eval=self.time, rtol=1e-10, atol=1e-12)
+        print(solution.nfev)
+        self.A_field = solution.y[0]
 
     def define_system(self, num_k, a):
         """a in angstrom"""
-        a = angstrom_to_bohr(a)
+        self.a = angstrom_to_bohr(a)
         self.k_list = np.linspace(-np.pi/a, np.pi/a, num_k)
-        self.dens_mat = np.zeros((len(self.time), num_k, 2, 2))
-        self.dens_mat[0, :,0 ,0] = 1 # fully populate conduction band 
+        self.dens_mat = DensityMatrix(self.k_list, a, self.time)
 
-
-    def plot_pulse(self):
+    def plot_field_E(self):
         fig, ax = plt.subplots()
         time = au_to_fs(self.time)
         E = au_to_Vpm(self.E_field)
         ax.plot(time, E)
         ax.set_xlabel("t/fs")
         ax.set_ylabel(r"E/$Vm^{-1}$")
+        plt.show()
+    
+    def plot_field_A(self):
+        fig, ax = plt.subplots()
+        time = au_to_fs(self.time)
+        A = au_to_fs(self.A_field)
+        A = au_to_Vpm(A)
+        ax.plot(time, A)
+        ax.set_xlabel("t/fs")
+        ax.set_ylabel(r"A/$Vsm^{-1}$")
         plt.show()
 
 class DensityMatrix:
@@ -80,12 +95,30 @@ class DensityMatrix:
         self.k_list = k_list
         self.a = a
         self.time = time
+        self.mat = np.zeros((len(time), len(k_list), 2, 2))
+        self.mat[0,:,0,0] = 1 # fully populate conduction band
+
+    def get_k_deriv(self):
+        deriv = np.roll
+
+
+def gaussian_sine(t, omega, sigma, t_start, E_null):
+    return -E_null * np.sin(omega * t) #* np.exp(-(t- t_start)**2 / (2 * sigma**2) )
 
 
 if __name__ =="__main__":
     ZnO = BandStructure(Ec=4, Ev=-3, tc=-1.5, tv=0.5, a=2) #5.16
     # ZnO.plot_bands(num_k=40)
-    sim = Simulation(t_end=30, n_steps=1000)
+    sim = Simulation(t_end=30, n_steps=10000)
     sim.define_pulse(sigma=3, lam=774, t_start=11, Enull=1)
     sim.define_system(num_k=100, a=9.8) 
-    sim.plot_pulse()
+    sim.get_vector_potential()
+    sim.plot_field_E()
+    sim.plot_field_A()
+    
+
+# vectorpotential from E
+# independently: write circularly polarized light
+# solve SBE ode integrate
+# equidistant time steps
+# nyquist theorem for time step estimation delta e delta t roundabout hbar
