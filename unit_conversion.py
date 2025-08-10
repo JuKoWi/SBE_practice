@@ -13,6 +13,12 @@ def angstrom_to_bohr(val):
     angstrom_in_meters = constants.angstrom  # 0 Å = 1e-10 m
     return val * angstrom_in_meters / bohr_radius_in_meters
 
+def bohr_to_angstrom(val):
+    bohr_radius_in_meters = constants.physical_constants['Bohr radius'][-1]  # in meters
+    angstrom_in_meters = constants.angstrom
+    return val * bohr_radius_in_meters / angstrom_in_meters
+
+
 
 def nm_to_au(wavelength_nm):
     bohr_radius_m = constants.physical_constants['Bohr radius'][0]  # in meters

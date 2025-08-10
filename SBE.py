@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.constants as constants
-from unit_conversion import eV_to_au, angstrom_to_bohr, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au
+from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au
 from scipy.integrate import solve_ivp
 
 class BandStructure:
@@ -47,7 +47,7 @@ class Simulation:
         self.time = np.linspace(0, t_end, n_steps)
 
     def define_bands(self, Ec, Ev, tc, tv):
-        self.bands = BandStructure(Ec=Ec, Ev=Ev, tc=tc, tv=tv, a=self.a)
+        self.bands = BandStructure(Ec=Ec, Ev=Ev, tc=tc, tv=tv, a=bohr_to_angstrom(self.a))
     
     def define_pulse(self, sigma, lam, t_start, Enull):
         """lam in nm, sigma in fs, Enull in V/m"""
@@ -70,9 +70,9 @@ class Simulation:
         """a in angstrom"""
         self.num_k = num_k
         self.a = angstrom_to_bohr(a)
-        self.k_list = np.linspace(-np.pi/a, np.pi/a, num_k)
+        self.k_list = np.linspace(-np.pi/self.a, np.pi/self.a, num_k, endpoint=False)
         self.mat_init = np.zeros((len(self.k_list), 2, 2))
-        self.mat_init[:,0,0] = 1 # fully populate conduction band
+        self.mat_init[:,1,1] = 1 # fully populate conduction band
 
     def set_h_null(self, dipole_element):
         h_null = np.zeros((len(self.k_list), 2, 2))
@@ -91,7 +91,7 @@ class Simulation:
         return commutator.flatten()
 
     def get_rhs(self,t, rho):
-        rhs = self.commute(rho) + self.E_k_function(t)#h_null is constant with time
+        rhs = -1j * (self.commute(rho) + self.E_k_function(t)) * self.get_k_partial(rho) #h_null is constant with time
         return rhs 
 
     def E_k_function(self, t):
@@ -99,6 +99,16 @@ class Simulation:
         E_k = E * self.k_list
         E_k = np.repeat(E_k, 4)
         return E_k
+
+    def get_k_partial(self, rho):
+        rho = np.reshape(rho, (len(self.k_list), 2, 2)) 
+        xplush = np.roll(rho, shift=-1, axis=0)
+        xminush = np.roll(rho, shift=1, axis=0)
+        xplustwoh = np.roll(rho, shift=-2, axis=0)
+        xminustwoh = np.roll(rho, shift=2, axis=0)
+        h = self.k_list[1] - self.k_list[0]
+        deriv = (8 * xplush - 8 * xminush + xminustwoh - xplustwoh)/(12 * h)
+        return deriv.flatten()
 
     def integrate(self):
         """needs self.rhs"""
@@ -131,7 +141,7 @@ class Simulation:
 
     def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
-        ax.plot(self.time, self.solution[:,0,0,0]) 
+        ax.plot(self.time, self.solution[:,k_index,0,0]) 
         plt.show()
 
 
@@ -140,13 +150,23 @@ def gaussian_sine(t, omega, sigma, t_start, E_null):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=30, n_steps=10000)
+    sim = Simulation(t_end=30, n_steps=1000)
     sim.define_pulse(sigma=3, lam=774, t_start=11, Enull=1)
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_h_null(dipole_element=0)
     sim.integrate() 
     sim.plot_density_matrix(k_index=50)
+    # mat = sim.set_h_null(dipole_element=0)
+    # deriv = sim.get_k_partial(sim.h_null)
+    # deriv = np.reshape(deriv, (len(sim.k_list), 2, 2)) 
+    # plt.plot(sim.k_list, deriv[:,0,0], label="deriv")
+    # H = np.reshape(sim.h_null, (len(sim.k_list), 2,2))
+    # plt.plot(sim.k_list, H[:,0,0], label="hamilton")
+    # plt.legend()
+    # plt.show()
+    
+    
 
     
 
