@@ -91,8 +91,8 @@ class Simulation:
         return commutator.flatten()
 
     def get_rhs(self,t, rho):
-        rhs = self.commute(rho) #h_null is constant with time
-        return rhs.flatten()
+        rhs = self.commute(rho) + self.E_k_function(t)#h_null is constant with time
+        return rhs 
 
     def E_k_function(self, t):
         E = self.E_null * np.sin(self.omega * t) * np.exp(-(t - self.t_start)**2 / (2 * self.sigma**2) )
@@ -102,10 +102,13 @@ class Simulation:
 
     def integrate(self):
         """needs self.rhs"""
-        solution = solve_ivp(self.get_rhs, t_span=(self.time[0], self.time[-1]), y0=self.mat_init.flatten(), t_eval=self.time)
-        print(np.shape(solution.t))
-        self.solution = np.reshape(solution.y, (len(self.time),len(self.k_list), 2,2))
-        print(np.shape(self.solution))
+        solution = solve_ivp(self.get_rhs, t_span=(self.time[0], self.time[-1]), y0=self.mat_init.flatten(), t_eval=self.time,
+                             method='Radau',
+                              #atol=1e-12, rtol=1e-12
+                              )
+        print(np.shape(solution.y))
+        print(solution.status)
+        self.solution = np.reshape(solution.y.T, (len(self.time),len(self.k_list), 2,2))
 
     def plot_field_E(self):
         fig, ax = plt.subplots()
@@ -126,8 +129,10 @@ class Simulation:
         ax.set_ylabel(r"A/$Vsm^{-1}$")
         plt.show()
 
-    def plot_density_matrix(self, k):
+    def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
+        ax.plot(self.time, self.solution[:,0,0,0]) 
+        plt.show()
 
 
 def gaussian_sine(t, omega, sigma, t_start, E_null):
@@ -135,12 +140,13 @@ def gaussian_sine(t, omega, sigma, t_start, E_null):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=30, n_steps=1000)
+    sim = Simulation(t_end=30, n_steps=10000)
     sim.define_pulse(sigma=3, lam=774, t_start=11, Enull=1)
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
-    sim.set_h_null(dipole_element=5)
+    sim.set_h_null(dipole_element=0)
     sim.integrate() 
+    sim.plot_density_matrix(k_index=50)
 
     
 
@@ -162,6 +168,7 @@ write function that
 """
 """
 possible tests:
+    check commutator 0
     leave out field: only constant matrix elements
 
 """
