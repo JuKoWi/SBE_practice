@@ -43,8 +43,9 @@ class Simulation:
 
     def __init__(self, t_end, n_steps):
         """t-end in fs"""
-        t_end = fs_to_au(t_end)
-        self.time = np.linspace(0, t_end, n_steps)
+        self.t_end = fs_to_au(t_end)
+        self.time = np.linspace(0, t_end, n_steps, endpoint=False)
+        self.n_steps = n_steps
 
     def define_bands(self, Ec, Ev, tc, tv):
         self.bands = BandStructure(Ec=Ec, Ev=Ev, tc=tc, tv=tv, a=bohr_to_angstrom(self.a))
@@ -73,15 +74,16 @@ class Simulation:
         h_const = np.zeros((len(self.k_list), 2, 2))
         for i,k in enumerate(self.k_list):
             h_const[i] = self.bands.get_H_mat(k)
-        h_const[:,1,0] = dipole_element  # not part of H_null but constant over time
-        h_const[:,0,1] = dipole_element
+        self.dipole_mat = np.zeros((2,2))
+        self.dipole_mat[0,1] = dipole_element  # not part of H_null but constant over time
+        self.dipole_mat[1,0] = dipole_element  # not part of H_null but constant over time
         h_const = h_const.flatten()
         self.h_const = h_const
     
     def get_H(self, t):
         h_const = np.reshape(self.h_const, (self.num_k, 2,2))
         E_mat = np.reshape(self.E_function(t=t), (self.num_k, 2,2))
-        h_mat = E_mat * h_const
+        h_mat = E_mat * self.dipole_mat + h_const
         return h_mat.flatten()
 
     def commute(self, rho, t):
@@ -119,8 +121,8 @@ class Simulation:
     def integrate(self):
         """needs self.rhs"""
         solution = solve_ivp(lambda rho, t: self.get_rhs(rho, t), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
-                             method='Radau',
-                              atol=1e-12, rtol=1e-12
+                            #  method='Radau',
+                            #   atol=1e-12, rtol=1e-12
                               )
         print(np.shape(solution.y))
         print(solution.status)
@@ -175,6 +177,24 @@ class Simulation:
         y = np.append(real, im, axis=0) 
         return y
 
+    def get_heatmap_rho(self):
+        rho = np.abs(self.solution)
+        fig, axs = plt.subplots(2,1, figsize=(8,4))
+        # time = np.linspace(0, self.t_end, self.n_steps+1, endpoint=False)
+        # k_space = np.linspace(-np.pi/self.a, np.pi/self.a, self.num_k+1, endpoint=False)
+        im1 = axs[0].pcolormesh(self.time, self.k_list, rho[:,:,0,0].T, shading='gouraud', label='valence band')
+        im2 = axs[1].pcolormesh(self.time, self.k_list, rho[:,:,1,1].T, shading='gouraud', label='conduction band')
+        axs[0].set_title('conduction band')
+        axs[1].set_title('valence band')
+        axs[0].set_xlabel('t')
+        axs[0].set_ylabel('k')
+        axs[1].set_xlabel('t')
+        axs[1].set_ylabel('k')
+        fig.colorbar(im1, ax=axs[0])
+        fig.colorbar(im2, ax=axs[1])
+        plt.legend()
+        plt.show()
+
 
 
 def gaussian_sine(t, omega, sigma, t_start, E0):
@@ -182,15 +202,16 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=30, n_steps=1000)
-    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1e11) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim = Simulation(t_end=1000, n_steps=1000)
+    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29) # corresponds to roundabout 9 a.u.
-    # sim.get_vector_potential()
-    # sim.plot_field_A()
+    print(Cm_to_au(9e-29))
     sim.integrate() 
-    sim.plot_density_matrix(k_index=0)
+    sim.plot_field_E()
+    sim.get_heatmap_rho()
+
     
     
 
@@ -200,7 +221,11 @@ if __name__ =="__main__":
 # solve SBE ode integrate
 # equidistant time steps
 # nyquist theorem for time step estimation delta e delta t roundabout hbar
-# gaussian sine everywhere
+# write definiton vector potential based on E0, ignore envelope
+# chekc for k dependence of simulation
+# sum diagonal elements over k (integrate) plot over time, norm to electrons / volume cell
+# calculate current
+
 """
 write laser as function return 4*k 1D array that multiplies with respective k
 write dens-mat as k,4, only initial

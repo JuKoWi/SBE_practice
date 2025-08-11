@@ -1,6 +1,7 @@
 from SBE import BandStructure, Simulation
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.linalg import ishermitian
 
 
 """
@@ -13,6 +14,7 @@ possible tests:
     leave out field: only constant matrix elements after integration
     trace constant rho_k
     0 leq diagonal elem leq 1
+    check rho hermitian
 """
 
 def check_rho_zero_derivative():
@@ -87,4 +89,15 @@ def check_commutator():
     commutator = np.reshape(sim.commute(rho, t=500), (sim.num_k, 2, 2)) #check for H at random time 
     print(np.sum(np.abs(commutator)))
 
-check_commutator()
+def check_rho_hermitian():
+    sim = Simulation(t_end=30, n_steps=1000)
+    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=0) # E_null = 0 -> no field, rho and H diagonal, commute
+    sim.define_system(num_k=100, a=9.8) 
+    sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
+    sim.set_H_constant(dipole_element=9e-29)
+    sim.integrate()
+    hermitian_mask = np.vectorize(ishermitian, signature='(i,j)->()')(sim.solution)
+    all_hermitian = hermitian_mask.all()
+    print(all_hermitian)
+    
+plot_H_const()
