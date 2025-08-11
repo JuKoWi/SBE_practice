@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.constants as constants
-from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au
+from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au
 from scipy.integrate import solve_ivp
 
 class BandStructure:
@@ -49,56 +49,62 @@ class Simulation:
     def define_bands(self, Ec, Ev, tc, tv):
         self.bands = BandStructure(Ec=Ec, Ev=Ev, tc=tc, tv=tv, a=bohr_to_angstrom(self.a))
     
-    def define_pulse(self, sigma, lam, t_start, Enull):
+    def define_pulse(self, sigma, lam, t_start, E0):
         """lam in nm, sigma in fs, Enull in V/m"""
         self.t_start = fs_to_au(t_start)
         self.sigma = fs_to_au(sigma)
         lam = nm_to_au(lam)
         self.omega = lam_to_omega(lam) 
-        self.E_null = Vpm_to_au(Enull)
-        self.E_field = self.E_null * np.sin(self.omega * self.time) * np.exp(-(self.time - self.t_start)**2 / (2 * self.sigma**2) )
-
-    def get_vector_potential(self):
-        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_start, self.E_null)
-        solution = solve_ivp(f, (self.time[0], self.time[-1]), [0], t_eval=self.time,method='DOP853', 
-                             rtol=1e-10, 
-                             atol=1e-12
-                             )
-        self.A_field = solution.y[0]
+        self.E0 = Vpm_to_au(E0)
+        self.E_field= gaussian_sine(t=self.time, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0=self.E0)
+        
 
     def define_system(self, num_k, a):
         """a in angstrom"""
         self.num_k = num_k
         self.a = angstrom_to_bohr(a)
         self.k_list = np.linspace(-np.pi/self.a, np.pi/self.a, num_k, endpoint=False)
-        self.mat_init = np.zeros((len(self.k_list), 2, 2))
-        self.mat_init[:,1,1] = 1 # fully populate conduction band
+        mat_init = np.zeros((len(self.k_list), 2, 2))
+        mat_init[:,1,1] = 1 # fully populate conduction band
+        self.mat_init = mat_init.flatten()
 
-    def set_h_null(self, dipole_element):
-        h_null = np.zeros((len(self.k_list), 2, 2))
+    def set_H_constant(self, dipole_element):
+        dipole_element = Cm_to_au(dipole_element)
+        h_const = np.zeros((len(self.k_list), 2, 2))
         for i,k in enumerate(self.k_list):
-            h_null[i] = self.bands.get_H_mat(k)
-        h_null[:,1,0] = dipole_element
-        h_null[:,0,1] = dipole_element
-        h_null = h_null.flatten()
-        self.h_null = h_null
+            h_const[i] = self.bands.get_H_mat(k)
+        h_const[:,1,0] = dipole_element  # not part of H_null but constant over time
+        h_const[:,0,1] = dipole_element
+        h_const = h_const.flatten()
+        self.h_const = h_const
+    
+    def get_H(self, t):
+        h_const = np.reshape(self.h_const, (self.num_k, 2,2))
+        E_mat = np.reshape(self.E_function(t=t), (self.num_k, 2,2))
+        h_mat = E_mat * h_const
+        return h_mat.flatten()
 
-    def commute(self, rho):
-        H = np.reshape(self.h_null, (len(self.k_list), 2, 2)) 
+    def commute(self, rho, t):
+        H = np.reshape(self.get_H(t), (len(self.k_list), 2, 2)) 
         rho = np.reshape(rho, (len(self.k_list), 2, 2)) 
         commutator = np.einsum('ijk, ikl -> ijl', H,rho) - np.einsum('ijk, ikl -> ijl', rho, H)
         # commutator = H @ rho - rho @ H 
         return commutator.flatten()
 
     def get_rhs(self,t, rho):
-        rhs = -1j * (self.commute(rho) + self.E_k_function(t)) * self.get_k_partial(rho) #h_null is constant with time
+        rho = self.y_to_rho(rho)
+        rhs = -1j * self.commute(rho, t) + self.E_function(t) * self.get_k_partial(rho) #h_null is constant with time
+        rhs = self.rho_to_y(rhs)
         return rhs 
 
-    def E_k_function(self, t):
-        E = self.E_null * np.sin(self.omega * t) * np.exp(-(t - self.t_start)**2 / (2 * self.sigma**2) )
-        E_k = E * self.k_list
-        E_k = np.repeat(E_k, 4)
-        return E_k
+    def E_function(self, t):
+        """flat array of dim num_k to introduce the E-field for every k"""
+        E = gaussian_sine(t, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0=self.E0)
+        E = np.repeat(E, self.num_k)
+        E_mat = np.zeros((self.num_k, 2,2))
+        E_mat[:,1,0] = E
+        E_mat[:,0,1] = E
+        return E_mat.flatten()
 
     def get_k_partial(self, rho):
         rho = np.reshape(rho, (len(self.k_list), 2, 2)) 
@@ -112,13 +118,17 @@ class Simulation:
 
     def integrate(self):
         """needs self.rhs"""
-        solution = solve_ivp(self.get_rhs, t_span=(self.time[0], self.time[-1]), y0=self.mat_init.flatten(), t_eval=self.time,
+        solution = solve_ivp(lambda rho, t: self.get_rhs(rho, t), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
                              method='Radau',
-                              #atol=1e-12, rtol=1e-12
+                              atol=1e-12, rtol=1e-12
                               )
         print(np.shape(solution.y))
         print(solution.status)
-        self.solution = np.reshape(solution.y.T, (len(self.time),len(self.k_list), 2,2))
+        rho_time = solution.y.T # transpose to switch time and other dimensions
+        real = rho_time[:,:self.num_k * 4, ...]
+        im = rho_time[:,self.num_k * 4 :, ...]
+        rho_time = real + 1j*im
+        self.solution = np.reshape(rho_time, (len(self.time),len(self.k_list), 2,2))
 
     def plot_field_E(self):
         fig, ax = plt.subplots()
@@ -129,42 +139,58 @@ class Simulation:
         ax.set_ylabel(r"E/$Vm^{-1}$")
         plt.show()
     
+    def plot_density_matrix(self, k_index):
+        fig, ax = plt.subplots()
+        ax.plot(self.time, np.abs(self.solution[:,k_index,1,0])) 
+        plt.show()
+
+    def get_vector_potential(self):
+        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_start, self.E0)
+        solution = solve_ivp(f, (self.time[0], self.time[-1]), [0], t_eval=self.time,
+                            #  method='DOP853', 
+                            #  rtol=1e-10, 
+                            #  atol=1e-12
+                             )
+        self.A_field = solution.y[0]
+
     def plot_field_A(self):
         fig, ax = plt.subplots()
         time = au_to_fs(self.time)
         A = au_to_fs(self.A_field)
         A = au_to_Vpm(A)
-        ax.plot(time, A)
+        ax.plot(time, self.A_field)
         ax.set_xlabel("t/fs")
         ax.set_ylabel(r"A/$Vsm^{-1}$")
         plt.show()
+    
+    def y_to_rho(self, y):
+        real = y[:self.num_k*4]
+        im = y[self.num_k*4:]
+        rho = real + 1j * im
+        return rho
+    
+    def rho_to_y(self, rho):
+        real = np.real(rho)
+        im = np.imag(rho)
+        y = np.append(real, im, axis=0) 
+        return y
 
-    def plot_density_matrix(self, k_index):
-        fig, ax = plt.subplots()
-        ax.plot(self.time, self.solution[:,k_index,0,0]) 
-        plt.show()
 
 
-def gaussian_sine(t, omega, sigma, t_start, E_null):
-    return -E_null * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2) )
+def gaussian_sine(t, omega, sigma, t_start, E0):
+    return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2) )
 
 
 if __name__ =="__main__":
     sim = Simulation(t_end=30, n_steps=1000)
-    sim.define_pulse(sigma=3, lam=774, t_start=11, Enull=1)
+    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1e11) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
-    sim.set_h_null(dipole_element=0)
+    sim.set_H_constant(dipole_element=9e-29) # corresponds to roundabout 9 a.u.
+    # sim.get_vector_potential()
+    # sim.plot_field_A()
     sim.integrate() 
-    sim.plot_density_matrix(k_index=50)
-    # mat = sim.set_h_null(dipole_element=0)
-    # deriv = sim.get_k_partial(sim.h_null)
-    # deriv = np.reshape(deriv, (len(sim.k_list), 2, 2)) 
-    # plt.plot(sim.k_list, deriv[:,0,0], label="deriv")
-    # H = np.reshape(sim.h_null, (len(sim.k_list), 2,2))
-    # plt.plot(sim.k_list, H[:,0,0], label="hamilton")
-    # plt.legend()
-    # plt.show()
+    sim.plot_density_matrix(k_index=0)
     
     
 
@@ -174,6 +200,7 @@ if __name__ =="__main__":
 # solve SBE ode integrate
 # equidistant time steps
 # nyquist theorem for time step estimation delta e delta t roundabout hbar
+# gaussian sine everywhere
 """
 write laser as function return 4*k 1D array that multiplies with respective k
 write dens-mat as k,4, only initial
@@ -185,10 +212,4 @@ write function that
     reshapes flat array into matrix shape
     calculates periodic k-derivative
     flattens
-"""
-"""
-possible tests:
-    check commutator 0
-    leave out field: only constant matrix elements
-
 """

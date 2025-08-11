@@ -43,3 +43,6 @@ def Vpm_to_au(Vpm):
 
 def au_to_Vpm(au):
     return au * constants.physical_constants['atomic unit of electric field'][0]
+
+def Cm_to_au(Cm):
+    return Cm / constants.physical_constants['atomic unit of electric dipole moment'][0]
