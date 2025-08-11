@@ -22,10 +22,11 @@ def check_rho_zero_derivative():
     sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1)
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
-    plt.plot(sim.k_list, sim.mat_init[:,0,0], label='0,0')
-    plt.plot(sim.k_list, sim.mat_init[:,1,0], label='1,0')
-    plt.plot(sim.k_list, sim.mat_init[:,0,1], label='0,1')
-    plt.plot(sim.k_list, sim.mat_init[:,1,1], label='1,1')
+    mat_init = np.reshape(sim.mat_init, (sim.num_k, 2,2))
+    plt.plot(sim.k_list, mat_init[:,0,0], label='0,0')
+    plt.plot(sim.k_list, mat_init[:,1,0], label='1,0')
+    plt.plot(sim.k_list, mat_init[:,0,1], label='0,1')
+    plt.plot(sim.k_list, mat_init[:,1,1], label='1,1')
     plt.legend()
     plt.show()
     deriv = np.reshape(sim.get_k_partial(sim.mat_init), (sim.num_k, 2,2))
@@ -80,9 +81,9 @@ def plot_E_field():
     plt.show()
 
 def check_commutator():
-    sim = Simulation(t_end=30, n_steps=1000)
+    sim = Simulation(t_end=30, n_steps=100)
     sim.define_pulse(sigma=3, lam=774, t_start=11, E0=0) # E_null = 0 -> no field, rho and H diagonal, commute
-    sim.define_system(num_k=100, a=9.8) 
+    sim.define_system(num_k=50, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29)
     rho = sim.mat_init
@@ -100,4 +101,9 @@ def check_rho_hermitian():
     all_hermitian = hermitian_mask.all()
     print(all_hermitian)
     
+check_rho_zero_derivative()
+check_commutator()
+plot_H_const()
+plot_H_deriv()
+plot_E_field()
 plot_H_const()

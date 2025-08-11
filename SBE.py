@@ -44,7 +44,7 @@ class Simulation:
     def __init__(self, t_end, n_steps):
         """t-end in fs"""
         self.t_end = fs_to_au(t_end)
-        self.time = np.linspace(0, t_end, n_steps, endpoint=False)
+        self.time = np.linspace(0, self.t_end, n_steps, endpoint=False)
         self.n_steps = n_steps
 
     def define_bands(self, Ec, Ev, tc, tv):
@@ -66,7 +66,7 @@ class Simulation:
         self.a = angstrom_to_bohr(a)
         self.k_list = np.linspace(-np.pi/self.a, np.pi/self.a, num_k, endpoint=False)
         mat_init = np.zeros((len(self.k_list), 2, 2))
-        mat_init[:,1,1] = 1 # fully populate conduction band
+        mat_init[:,1,1] = 1 # fully populate valence band
         self.mat_init = mat_init.flatten()
 
     def set_H_constant(self, dipole_element):
@@ -97,6 +97,7 @@ class Simulation:
         rho = self.y_to_rho(rho)
         rhs = -1j * self.commute(rho, t) + self.E_function(t) * self.get_k_partial(rho) #h_null is constant with time
         rhs = self.rho_to_y(rhs)
+        print("rhs executed")
         return rhs 
 
     def E_function(self, t):
@@ -120,10 +121,10 @@ class Simulation:
 
     def integrate(self):
         """needs self.rhs"""
-        solution = solve_ivp(lambda rho, t: self.get_rhs(rho, t), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
-                            #  method='Radau',
-                            #   atol=1e-12, rtol=1e-12
-                              )
+        solution = solve_ivp(lambda t, rho : self.get_rhs(t=t, rho=rho), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
+                            method='BDF',
+                            atol=1e-14, rtol=1e-14
+                            )
         print(np.shape(solution.y))
         print(solution.status)
         rho_time = solution.y.T # transpose to switch time and other dimensions
@@ -143,7 +144,7 @@ class Simulation:
     
     def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
-        ax.plot(self.time, np.abs(self.solution[:,k_index,1,0])) 
+        ax.plot(au_to_fs(self.time), np.abs(self.solution[:,k_index,1,0])) 
         plt.show()
 
     def get_vector_potential(self):
@@ -180,10 +181,8 @@ class Simulation:
     def get_heatmap_rho(self):
         rho = np.abs(self.solution)
         fig, axs = plt.subplots(2,1, figsize=(8,4))
-        # time = np.linspace(0, self.t_end, self.n_steps+1, endpoint=False)
-        # k_space = np.linspace(-np.pi/self.a, np.pi/self.a, self.num_k+1, endpoint=False)
-        im1 = axs[0].pcolormesh(self.time, self.k_list, rho[:,:,0,0].T, shading='gouraud', label='valence band')
-        im2 = axs[1].pcolormesh(self.time, self.k_list, rho[:,:,1,1].T, shading='gouraud', label='conduction band')
+        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,0].T, shading='gouraud')
+        im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='gouraud')
         axs[0].set_title('conduction band')
         axs[1].set_title('valence band')
         axs[0].set_xlabel('t')
@@ -192,7 +191,6 @@ class Simulation:
         axs[1].set_ylabel('k')
         fig.colorbar(im1, ax=axs[0])
         fig.colorbar(im2, ax=axs[1])
-        plt.legend()
         plt.show()
 
 
@@ -202,12 +200,11 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=1000, n_steps=1000)
-    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.define_system(num_k=100, a=9.8) 
+    sim = Simulation(t_end=100, n_steps=1000)
+    sim.define_pulse(sigma=10, lam=2000, t_start=40, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.define_system(num_k=50, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29) # corresponds to roundabout 9 a.u.
-    print(Cm_to_au(9e-29))
     sim.integrate() 
     sim.plot_field_E()
     sim.get_heatmap_rho()

@@ -36,7 +36,7 @@ def fs_to_au(fs):
     return au
 
 def au_to_fs(au):
-    return au * constants.physical_constants['atomic unit of time'][0] /constants.femto
+    return (au * constants.physical_constants['atomic unit of time'][0]) /constants.femto
 
 def Vpm_to_au(Vpm):
     return Vpm / constants.physical_constants['atomic unit of electric field'][0]
