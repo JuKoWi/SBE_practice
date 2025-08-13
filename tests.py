@@ -100,10 +100,17 @@ def check_rho_hermitian():
     hermitian_mask = np.vectorize(ishermitian, signature='(i,j)->()')(sim.solution)
     all_hermitian = hermitian_mask.all()
     print(all_hermitian)
+
+def check_trace_const():
+    sim = Simulation(t_end=30, n_steps=1000)
+    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=0) # E_null = 0 -> no field, rho and H diagonal, commute
+    sim.define_system(num_k=100, a=9.8) 
+    sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
+    sim.set_H_constant(dipole_element=9e-29)
+    sim.integrate()
+    rho = sim.solution
+    traces = np.einsum('ijkk -> i', rho)/sim.num_k
+    print(np.all(traces == traces[0]))
+
+check_trace_const()
     
-check_rho_zero_derivative()
-check_commutator()
-plot_H_const()
-plot_H_deriv()
-plot_E_field()
-plot_H_const()

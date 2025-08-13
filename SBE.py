@@ -5,6 +5,7 @@ import scipy.linalg as la
 import scipy.constants as constants
 from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au
 from scipy.integrate import solve_ivp
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 class BandStructure:
 
@@ -88,16 +89,19 @@ class Simulation:
 
     def commute(self, rho, t):
         H = np.reshape(self.get_H(t), (len(self.k_list), 2, 2)) 
-        rho = np.reshape(rho, (len(self.k_list), 2, 2)) 
+        rho = np.reshape(rho, (len(self.k_list), 2, 2))
         commutator = np.einsum('ijk, ikl -> ijl', H,rho) - np.einsum('ijk, ikl -> ijl', rho, H)
         # commutator = H @ rho - rho @ H 
         return commutator.flatten()
 
     def get_rhs(self,t, rho):
         rho = self.y_to_rho(rho)
-        rhs = -1j * self.commute(rho, t) + self.E_function(t) * self.get_k_partial(rho) #h_null is constant with time
+        E = gaussian_sine(t, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0= self.E0) 
+        rhs = -1j * self.commute(rho, t) + E * self.get_k_partial(rho) #h_null is constant with time
         rhs = self.rho_to_y(rhs)
-        print("rhs executed")
+        print(f"rhs executed at {au_to_fs(t)}")
+        print(E)
+
         return rhs 
 
     def E_function(self, t):
@@ -122,8 +126,8 @@ class Simulation:
     def integrate(self):
         """needs self.rhs"""
         solution = solve_ivp(lambda t, rho : self.get_rhs(t=t, rho=rho), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
-                            method='BDF',
-                            atol=1e-14, rtol=1e-14
+                            # method='BDF',
+                            # atol=1e-14, rtol=1e-14
                             )
         print(np.shape(solution.y))
         print(solution.status)
@@ -167,12 +171,16 @@ class Simulation:
         plt.show()
     
     def y_to_rho(self, y):
+        # return (y[::2] + 1j * y[1::2]).reshape(rhso.shape)
         real = y[:self.num_k*4]
         im = y[self.num_k*4:]
         rho = real + 1j * im
         return rho
     
     def rho_to_y(self, rho):
+        # y = np.empty(rho.size *2)
+        # y[::2] = np.real().flatten()
+
         real = np.real(rho)
         im = np.imag(rho)
         y = np.append(real, im, axis=0) 
@@ -180,23 +188,26 @@ class Simulation:
 
     def get_heatmap_rho(self):
         rho = np.abs(self.solution)
-        fig, axs = plt.subplots(2,1, figsize=(8,4))
-        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,0].T, shading='gouraud')
-        im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='gouraud')
+        fig, axs = plt.subplots(3,1, figsize=(8,4), sharex=True)
+        # im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, (rho[:,:,0,0]).T, shading='auto')
+        # im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, (rho[:,:,1,1]-rho[0,:,1,1]).T, shading='auto')
+        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,1].T, shading='auto')
+        im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='auto')
+        axs[2].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
         axs[0].set_title('conduction band')
         axs[1].set_title('valence band')
         axs[0].set_xlabel('t')
         axs[0].set_ylabel('k')
         axs[1].set_xlabel('t')
         axs[1].set_ylabel('k')
-        fig.colorbar(im1, ax=axs[0])
-        fig.colorbar(im2, ax=axs[1])
+        fig.colorbar(im1, ax=axs[0], orientation='horizontal')
+        fig.colorbar(im2, ax=axs[1], orientation='horizontal')
         plt.show()
 
 
 
 def gaussian_sine(t, omega, sigma, t_start, E0):
-    return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2) )
+    return -E0 * np.sin(omega * t) #* np.exp(-(t- t_start)**2 / (2 * sigma**2) )
 
 
 if __name__ =="__main__":
