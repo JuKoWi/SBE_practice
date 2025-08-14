@@ -22,14 +22,14 @@ def check_rho_zero_derivative():
     sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1)
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
-    mat_init = np.reshape(sim.mat_init, (sim.num_k, 2,2))
+    mat_init = sim.mat_init
     plt.plot(sim.k_list, mat_init[:,0,0], label='0,0')
     plt.plot(sim.k_list, mat_init[:,1,0], label='1,0')
     plt.plot(sim.k_list, mat_init[:,0,1], label='0,1')
     plt.plot(sim.k_list, mat_init[:,1,1], label='1,1')
     plt.legend()
     plt.show()
-    deriv = np.reshape(sim.get_k_partial(sim.mat_init), (sim.num_k, 2,2))
+    deriv = sim.get_k_partial(sim.mat_init)
     plt.plot(sim.k_list, deriv[:, 0, 0], label='0,0')
     plt.plot(sim.k_list, deriv[:, 1, 0], label='1,0')
     plt.plot(sim.k_list, deriv[:, 0, 1], label='0,1')
@@ -42,8 +42,8 @@ def plot_H_const():
     sim.define_pulse(sigma=3, lam=774, t_start=11, E0=1)
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
-    sim.set_H_constant(dipole_element=9e-29)
-    h_const = np.reshape(sim.h_const, (sim.num_k, 2,2))
+    sim.set_H_constant(dipole_element=1e11)
+    h_const = sim.h_const
     plt.plot(sim.k_list, h_const[:,0,0], label='0,0')
     plt.plot(sim.k_list, h_const[:,1,0], label='1,0')
     plt.plot(sim.k_list, h_const[:,0,1], label='0,1')
@@ -57,9 +57,8 @@ def plot_H_deriv():
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29)
-    h_const = np.reshape(sim.h_const, (sim.num_k, 2,2))
-    deriv_flat = sim.get_k_partial(sim.h_const)
-    deriv = np.reshape(deriv_flat, (sim.num_k, 2,2))
+    h_const = sim.h_const 
+    deriv = sim.get_k_partial(sim.h_const)
     plt.plot(sim.k_list, deriv[:,0,0], label='0,0')
     plt.plot(sim.k_list, deriv[:,1,0], label='1,0')
     plt.plot(sim.k_list, deriv[:,0,1], label='0,1')
@@ -76,7 +75,7 @@ def plot_E_field():
     time = sim.time
     E_mat = np.zeros((len(sim.time), sim.num_k, 2,2))
     for i,t in enumerate(sim.time):
-        E_mat[i] = np.reshape(sim.E_function(t),(sim.num_k, 2, 2))
+        E_mat[i] = np.reshape(sim.get_E(t),(sim.num_k, 2, 2))
     plt.plot(time, E_mat[:,0,0,1]) 
     plt.show()
 
@@ -113,4 +112,3 @@ def check_trace_const():
     print(np.all(traces == traces[0]))
 
 check_trace_const()
-    

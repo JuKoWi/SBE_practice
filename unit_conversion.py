@@ -2,23 +2,21 @@ import scipy.constants as constants
 import numpy as np
 
 def eV_to_au(eV):
-    return eV / constants.physical_constants['Hartree energy in eV'][-1]
- 
+    return eV / constants.physical_constants['Hartree energy in eV'][0]
+
 
 def au_to_ev(au):
-    return au *constants.physical_constants['Hartree energy in eV'][-1]
+    return au *constants.physical_constants['Hartree energy in eV'][0]
     
 def angstrom_to_bohr(val):
-    bohr_radius_in_meters = constants.physical_constants['Bohr radius'][-1]  # in meters
+    bohr_radius_in_meters = constants.physical_constants['Bohr radius'][0]  # in meters
     angstrom_in_meters = constants.angstrom  # 0 Å = 1e-10 m
     return val * angstrom_in_meters / bohr_radius_in_meters
 
 def bohr_to_angstrom(val):
-    bohr_radius_in_meters = constants.physical_constants['Bohr radius'][-1]  # in meters
+    bohr_radius_in_meters = constants.physical_constants['Bohr radius'][0]  # in meters
     angstrom_in_meters = constants.angstrom
     return val * bohr_radius_in_meters / angstrom_in_meters
-
-
 
 def nm_to_au(wavelength_nm):
     bohr_radius_m = constants.physical_constants['Bohr radius'][0]  # in meters
