@@ -3,9 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.constants as constants
-from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au
+from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au, au_to_A
 from scipy.integrate import solve_ivp
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 class BandStructure:
 
@@ -24,34 +23,29 @@ class BandStructure:
         H[1,1] = self.Ev + self.tv * np.cos(k * self.a)
         return H
     
-"""objective: get density matrix at times t0 to t
-diffential equation formulated for each k coupled by k-gradient
-all matrices written in abstract two level basis
-start with fully populated ground valence band
-use runge kutta to integrate in time
-"""
+    def get_H_partial_k(self, k):
+        H = np.zeros((2,2))
+        H[0,0] = -self.tc * self.a * np.sin(k * self.a)
+        H[1,1] = -self.tv * self.a * np.sin(k * self.a)
+        return H
 
 class Simulation:
-
+    """rewrite such that pulse and bands are provided as the respective classes
+    only time interval /discretization for initialization"""
     def __init__(self, t_end, n_steps):
         """t-end in fs"""
         self.t_end = fs_to_au(t_end)
         self.time = np.linspace(0, self.t_end, n_steps, endpoint=False)
         self.n_steps = n_steps
+        self.solution = None
 
     def define_bands(self, Ec, Ev, tc, tv):
         self.bands = BandStructure(Ec=Ec, Ev=Ev, tc=tc, tv=tv, a=bohr_to_angstrom(self.a))
-    
-    def define_pulse(self, sigma, lam, t_start, E0):
-        """lam in nm, sigma in fs, Enull in V/m"""
-        self.t_start = fs_to_au(t_start)
-        self.sigma = fs_to_au(sigma)
-        lam = nm_to_au(lam)
-        self.omega = lam_to_omega(lam) 
-        self.E0 = Vpm_to_au(E0)
-        self.E_field = np.array([gaussian_sine(t=t, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0=self.E0) for t in self.time])
-        
 
+    def define_pulse(self, sigma, lam, t_start, E0):
+        """sigma and t_start in fs, E0 in V/m, lam in nm"""
+        self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_start=t_start, E0=E0)
+    
     def define_system(self, num_k, a):
         """a in angstrom"""
         self.num_k = num_k
@@ -71,12 +65,8 @@ class Simulation:
     
     def get_H(self, t):
         # h_mat = np.repeat(np.expand_dims(self.get_E(t) * self.dipole_mat, axis=0), self.num_k, axis=0) + self.h_const
-        h_mat = self.get_E(t) * self.dipole_mat + self.h_const
+        h_mat = self.pulse.get_E(t) * self.dipole_mat + self.h_const
         return h_mat
-
-    def get_E(self, t):
-        E = gaussian_sine(t, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0=self.E0)
-        return E
 
     def commute(self, rho, t):
         H = self.get_H(t) 
@@ -95,7 +85,7 @@ class Simulation:
 
     def get_rhs(self,t, y):
         rho = self.y_to_rho(y)
-        E = self.get_E(t) 
+        E = self.pulse.get_E(t) 
         rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) 
         return self.rho_to_y(rhs) 
 
@@ -104,29 +94,9 @@ class Simulation:
         solution = solve_ivp(lambda t, y : self.get_rhs(t=t, y=y), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
                             # method='BDF', 
                             # atol=1e-12, rtol=1e-12,
-                            # atol = np.array([1e-10, 1e-10, 1e-30, 1e-30, 1e-30, 1e-30, 1e-10, 1e-10])
                             )
         rho_time = solution.y.T # transpose to switch time and other dimensions
         self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])])
-    
-    def get_vector_potential(self):
-        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_start, self.E0)
-        solution = solve_ivp(f, (self.time[0], self.time[-1]), [0], t_eval=self.time,
-                            #  method='DOP853', 
-                            #  rtol=1e-10, 
-                            #  atol=1e-12
-                             )
-        self.A_field = solution.y[0]
-
-    def plot_field_A(self):
-        fig, ax = plt.subplots()
-        time = au_to_fs(self.time)
-        A = au_to_fs(self.A_field)
-        A = au_to_Vpm(A)
-        ax.plot(time, self.A_field)
-        ax.set_xlabel("t/fs")
-        ax.set_ylabel(r"A/$Vsm^{-1}$")
-        plt.show()
     
     def y_to_rho(self, y):
         """takes matrix shape and returns flat shape with double the length"""
@@ -143,13 +113,64 @@ class Simulation:
         result = self.y_to_rho(self.rho_to_y(test_array))
         print(np.array_equal(test_array, result))
 
+    def get_current(self):
+        H_partial = self.get_H_partial()
+        J = self.get_J(H_partial_k=H_partial)
+        rho_J = self.get_rho_J(J=J)
+        self.current = np.einsum('ijkk -> i',rho_J)
+    
+    def get_H_partial(self):
+        H_partial = np.zeros((self.num_k, 2, 2))
+        for i,k in enumerate(self.k_list):
+            H_partial[i] = self.bands.get_H_partial_k(k)
+        return H_partial
+
+    def get_J(self, H_partial_k):
+        dipole_mat = self.dipole_mat
+        h_null = self.h_const
+        J = - (H_partial_k - 1j * (np.einsum('ab,kbc -> kac', dipole_mat, h_null) - np.einsum('kab, bc -> kac', h_null, dipole_mat)))
+        return J
+
+    def get_rho_J(self, J):
+        J = self.get_J(H_partial_k=self.get_H_partial())
+        rho = self.solution
+        return np.einsum('tkab,kbc -> tkac', rho, J)
+    
+    def calculate_spectrum(self):
+        N = self.n_steps
+        omega = np.array([np.exp(-1j * 2 * n *np.pi /N) for n in range(self.n_steps)])
+        vandermonde = np.vander(omega, increasing=True).T
+        result = vandermonde @ self.current
+        ang_freq = 2 * np.pi * np.arange((self.n_steps)) / self.t_end
+        plt.plot(ang_freq, np.log(result))
+        plt.show()
+        # write in ev, number harmonic
+        
+
+
+
 
 class Field:
     """must include a method with t as input"""
 
-    def __init__(self):
-        pass
+    def __init__(self, time, sigma, lam, t_start, E0):
+        """lam in nm, sigma in fs, Enull in V/m"""
+        self.time = time
+        self.t_start = fs_to_au(t_start)
+        self.sigma = fs_to_au(sigma)
+        lam = nm_to_au(lam)
+        self.omega = lam_to_omega(lam) 
+        self.E0 = Vpm_to_au(E0)
+        self.E_field = np.array([self.get_E(t) for t in self.time])
 
+    def get_E(self, t):
+        E = gaussian_sine(t, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0=self.E0)
+        return E
+
+    def get_vector_potential(self):
+        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_start, self.E0)
+        solution = solve_ivp(f, (self.time[0], self.time[-1]), [0], t_eval=self.time)
+        self.A_field = solution.y[0]
 
 class Plot:
 
@@ -157,7 +178,8 @@ class Plot:
         self.time = simulation.time
         self.solution = simulation.solution
         self.k_list = simulation.k_list
-        self.E_field =simulation.E_field
+        self.E_field = simulation.pulse.E_field
+        self.simulation = simulation
     
     def get_heatmap_rho(self):
         rho = np.abs(self.solution)
@@ -178,8 +200,7 @@ class Plot:
     def plot_field_E(self):
         fig, ax = plt.subplots()
         time = au_to_fs(self.time)
-        E = np.array([au_to_Vpm(self.get_E(t)) for t in self.time])
-        ax.plot(time, E)
+        ax.plot(time, au_to_Vpm(self.E_field))
         ax.set_xlabel("t/fs")
         ax.set_ylabel(r"E/$Vm^{-1}$")
         plt.show()
@@ -189,22 +210,49 @@ class Plot:
         ax.plot(au_to_fs(self.time), np.abs(self.solution[:,k_index,1,1])) 
         plt.show()
 
+    def plot_field_A(self):
+        A = au_to_fs(au_to_Vpm(self.simulation.pulse.A_field))
+        fig, ax = plt.subplots()
+        time = au_to_fs(self.time)
+        ax.plot(time, A)
+        ax.set_xlabel("t/fs")
+        ax.set_ylabel(r"A/$Vsm^{-1}$")
+        plt.show()
+    
+    def plot_current(self):
+        J = au_to_A(np.real(self.simulation.current))
+        time = au_to_fs(self.time)
+        fig, ax = plt.subplots()
+        ax.plot(time, J)
+        ax.set_xlabel("t / fs")
+        ax.set_ylabel("j / A")
+        plt.show()
+
+    
+
 
 def gaussian_sine(t, omega, sigma, t_start, E0):
     return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2) )
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=90, n_steps=1000)
+    sim = Simulation(t_end=90, n_steps=5000)
     sim.define_pulse(sigma=5, lam=774, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.define_system(num_k=100, a=9.8) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29) # 9e-29 corresponds to roundabout 9 a.u.
-    # sim.plot_field_E()
     sim.integrate() 
+    sim.get_current()
     results = Plot(sim)
+    # results.plot_field_E()
+    # sim.pulse.get_vector_potential()
+    # results.plot_field_A()
     results.get_heatmap_rho()
+    results.plot_current()
+    sim.calculate_spectrum()
     # sim.plot_density_matrix(k_index=0)
+
+
 
     
     
@@ -218,5 +266,6 @@ nyquist theorem for time step estimation delta e delta t roundabout hbar
 write definiton vector potential based on E0, ignore envelope
 chekc for k dependence of simulation
 sum diagonal elements over k (integrate) plot over time, norm to electrons / volume cell
-calculate current
+dephasing
+distort symmetry with phase on dipole
 """

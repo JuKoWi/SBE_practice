@@ -111,4 +111,17 @@ def check_trace_const():
     traces = np.einsum('ijkk -> i', rho)/sim.num_k
     print(np.all(traces == traces[0]))
 
-check_trace_const()
+def check_h_partial():
+    sim = Simulation(t_end=30, n_steps=1000)
+    sim.define_pulse(sigma=3, lam=774, t_start=11, E0=0) # E_null = 0 -> no field, rho and H diagonal, commute
+    sim.define_system(num_k=100, a=9.8) 
+    sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
+    H_partial = sim.get_H_partial()
+    plt.plot(sim.k_list, H_partial[:,0,0], label='0,0')
+    plt.plot(sim.k_list, H_partial[:,1,0], label='1,0')
+    plt.plot(sim.k_list, H_partial[:,0,1], label='0,1')
+    plt.plot(sim.k_list, H_partial[:,1,1], label='1,1')
+    plt.legend()
+    plt.show()
+
+
