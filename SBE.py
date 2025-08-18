@@ -55,17 +55,19 @@ class Simulation:
         self.mat_init = np.zeros((self.num_k, 2, 2), dtype='complex')
         self.mat_init[:,1,1] = 1 # fully populate valence band
 
+    def phase_func(self, k):
+        return 2 * np.pi * k / -self.k_list[0]
+
     def set_H_constant(self, dipole_element):
         dipole_element = Cm_to_au(dipole_element)
-        self.h_const = np.zeros((self.num_k, 2, 2))
+        self.h_const = np.zeros((self.num_k,2,2))
+        self.dipole_mat = np.zeros((self.num_k,2,2), dtype='complex')
         for i,k in enumerate(self.k_list):
             self.h_const[i] = self.bands.get_H_mat(k)
-        self.dipole_mat = np.zeros((2,2))
-        self.dipole_mat[0,1] = dipole_element  # not part of H_null but constant over time
-        self.dipole_mat[1,0] = dipole_element  # not part of H_null but constant over time
+            self.dipole_mat[i,0,1] = dipole_element * np.exp(1j*self.phase_func(k))
+            self.dipole_mat[i,1,0] = dipole_element * np.exp(-1j*self.phase_func(k))
     
     def get_H(self, t):
-        # h_mat = np.repeat(np.expand_dims(self.get_E(t) * self.dipole_mat, axis=0), self.num_k, axis=0) + self.h_const
         h_mat = self.pulse.get_E(t) * self.dipole_mat + self.h_const
         return h_mat
 
@@ -89,9 +91,8 @@ class Simulation:
         E = self.pulse.get_E(t) 
         dephasing = 0
         if self.T2 != 0:
-            mask = np.eye(2)
-            dephasing = (1/self.T2) * (rho - rho * mask)
-        rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) + dephasing 
+            dephasing = (1/self.T2) * (rho - rho * np.eye(2))
+        rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) - dephasing 
         return self.rho_to_y(rhs) 
 
     def integrate(self):
@@ -133,7 +134,7 @@ class Simulation:
     def get_J(self, H_partial_k):
         dipole_mat = self.dipole_mat
         h_null = self.h_const
-        J = - (H_partial_k - 1j * (np.einsum('ab,kbc -> kac', dipole_mat, h_null) - np.einsum('kab, bc -> kac', h_null, dipole_mat)))
+        J = - (H_partial_k - 1j * (np.einsum('kab, kbc -> kac', dipole_mat, h_null) - np.einsum('kab, kbc -> kac', h_null, dipole_mat)))
         return J
 
     def get_rho_J(self, J):
@@ -158,9 +159,9 @@ class Simulation:
         def harmonic_to_energy(h):
             return h * au_to_ev(self.pulse.omega)
 
-        ax.plot(energy_eV, np.log(np.abs(result)))
+        ax.plot(energy_eV, np.log10(energy_eV**2 * np.abs(result)**2))
         ax.set_xlabel('E/eV')
-        ax.set_ylabel('log(S)')
+        ax.set_ylabel(r'$\log_{10}(S)$')
         secax = ax.secondary_xaxis('top', functions=(energy_to_harmonic, harmonic_to_energy))
         secax.set_xlabel('Harmonic order')
         plt.show()
@@ -201,9 +202,9 @@ class Plot:
         self.simulation = simulation
     
     def get_heatmap_rho(self):
-        rho = np.abs(self.solution)
+        rho = np.real(self.solution)
         fig, axs = plt.subplots(3,1, figsize=(8,4), sharex=True)
-        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,1].T, shading='auto')
+        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,0].T, shading='auto')
         im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='auto')
         axs[2].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
         axs[0].set_title('conduction band')
@@ -227,7 +228,7 @@ class Plot:
 
     def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
-        ax.plot(au_to_fs(self.time), np.abs(self.solution[:,k_index,1,1])) 
+        ax.plot(au_to_fs(self.time), np.sum(np.abs(self.solution[:,:,0,0]), axis=1)) 
         plt.show()
 
     def plot_field_A(self):
@@ -252,12 +253,12 @@ class Plot:
 
 
 def gaussian_sine(t, omega, sigma, t_start, E0):
-    return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2) )
+    return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2))
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=90, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=774, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim = Simulation(t_end=100, n_steps=5000)
+    sim.define_pulse(sigma=5, lam=1240, t_start=50, E0=3e8) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.define_system(num_k=100, a=9.8, T2=10) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29) # 9e-29 corresponds to roundabout 9 a.u.
@@ -269,7 +270,8 @@ if __name__ =="__main__":
     results.get_heatmap_rho()
     results.plot_current()
     sim.calculate_spectrum()
-    # sim.plot_density_matrix(k_index=0)
+    
+    results.plot_density_matrix(k_index=0)
 
 
 
@@ -285,6 +287,4 @@ nyquist theorem for time step estimation delta e delta t roundabout hbar
 write definiton vector potential based on E0, ignore envelope
 chekc for k dependence of simulation
 sum diagonal elements over k (integrate) plot over time, norm to electrons / volume cell
-dephasing
-distort symmetry with phase on dipole
 """
