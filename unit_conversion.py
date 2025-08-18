@@ -28,6 +28,7 @@ def lam_to_omega(lam_au):
     omega_au = 2*np.pi * c_au /lam_au
     return omega_au
 
+
 def fs_to_au(fs):
     s = fs * constants.femto
     au = s / constants.physical_constants['atomic unit of time'][0]
@@ -50,3 +51,4 @@ def A_to_au(A):
 
 def au_to_A(au):
     return au * constants.physical_constants['atomic unit of current'][0]
+

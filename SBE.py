@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.constants as constants
-from unit_conversion import eV_to_au, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au, au_to_A
+from unit_conversion import eV_to_au, au_to_ev, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au, au_to_A
 from scipy.integrate import solve_ivp
 
 class BandStructure:
@@ -46,9 +46,10 @@ class Simulation:
         """sigma and t_start in fs, E0 in V/m, lam in nm"""
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_start=t_start, E0=E0)
     
-    def define_system(self, num_k, a):
+    def define_system(self, num_k, a, T2=0):
         """a in angstrom"""
         self.num_k = num_k
+        self.T2 = fs_to_au(T2)
         self.a = angstrom_to_bohr(a)
         self.k_list = np.linspace(-np.pi/self.a, np.pi/self.a, num_k, endpoint=False)
         self.mat_init = np.zeros((self.num_k, 2, 2), dtype='complex')
@@ -86,7 +87,11 @@ class Simulation:
     def get_rhs(self,t, y):
         rho = self.y_to_rho(y)
         E = self.pulse.get_E(t) 
-        rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) 
+        dephasing = 0
+        if self.T2 != 0:
+            mask = np.eye(2)
+            dephasing = (1/self.T2) * (rho - rho * mask)
+        rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) + dephasing 
         return self.rho_to_y(rhs) 
 
     def integrate(self):
@@ -142,9 +147,23 @@ class Simulation:
         vandermonde = np.vander(omega, increasing=True).T
         result = vandermonde @ self.current
         ang_freq = 2 * np.pi * np.arange((self.n_steps)) / self.t_end
-        plt.plot(ang_freq, np.log(result))
+        energy_eV = au_to_ev(ang_freq)
+        energy_eV = energy_eV[:len(energy_eV)//2]
+        result = result[:len(result)//2]
+
+        fix, ax = plt.subplots()
+        def energy_to_harmonic(E):
+            return E / au_to_ev(self.pulse.omega)
+        
+        def harmonic_to_energy(h):
+            return h * au_to_ev(self.pulse.omega)
+
+        ax.plot(energy_eV, np.log(np.abs(result)))
+        ax.set_xlabel('E/eV')
+        ax.set_ylabel('log(S)')
+        secax = ax.secondary_xaxis('top', functions=(energy_to_harmonic, harmonic_to_energy))
+        secax.set_xlabel('Harmonic order')
         plt.show()
-        # write in ev, number harmonic
         
 
 
@@ -189,10 +208,11 @@ class Plot:
         axs[2].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
         axs[0].set_title('conduction band')
         axs[1].set_title('valence band')
-        axs[0].set_xlabel('t')
-        axs[0].set_ylabel('k')
-        axs[1].set_xlabel('t')
+        axs[0].set_xlabel('t / fs')
+        axs[0].set_ylabel('k / a.u.')
+        axs[1].set_xlabel('t / fs')
         axs[1].set_ylabel('k')
+        axs[2].set_ylabel(r'E / V $m^{-1}$')
         fig.colorbar(im1, ax=axs[0], orientation='horizontal')
         fig.colorbar(im2, ax=axs[1], orientation='horizontal')
         plt.show()
@@ -238,13 +258,12 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=90, n_steps=5000)
     sim.define_pulse(sigma=5, lam=774, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.define_system(num_k=100, a=9.8) 
+    sim.define_system(num_k=100, a=9.8, T2=10) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
     sim.set_H_constant(dipole_element=9e-29) # 9e-29 corresponds to roundabout 9 a.u.
     sim.integrate() 
     sim.get_current()
     results = Plot(sim)
-    # results.plot_field_E()
     # sim.pulse.get_vector_potential()
     # results.plot_field_A()
     results.get_heatmap_rho()
