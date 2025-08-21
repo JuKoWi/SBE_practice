@@ -94,15 +94,15 @@ class LCAOMatrices:
     def get_D_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
-        # A = S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half)
-        # B = S_half_adj.conj() @ self.nablak_blocks.conj() @ S_half 
-        # # A = A[30]
-        # # B = B[30]
-        # # C = (-1j*A + B)
-        # print(A)
-        # print(B)
-        # print(f"imag: {np.imag(C)}")
-        # print(f"real: {np.real(C)}")
+        A = S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half)
+        B = S_half_adj @ self.nablak_blocks @ S_half 
+        A = A[20]
+        B = B[20]
+        C = 1j*(A + B)
+        print(A)
+        print(B)
+        print(f"imag: {np.imag(C)}")
+        print(f"real: {np.real(C)}")
         self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
 
     def get_H_orth(self):
@@ -122,6 +122,10 @@ class LCAOMatrices:
         plt.plot(self.k_list, bands[0])
         plt.plot(self.k_list, bands[1])
         plt.show()
+    
+    def check_D_hermiticity(self):
+        for i,k in enumerate(self.k_list):
+            print(ishermitian(self.D_orth[i], atol=1e-10))
 
 
 class LCAOAtomIntegrals:
@@ -157,7 +161,7 @@ class LCAOAtomIntegrals:
             for i, R in enumerate(range(-self.R_max, self.R_max +1)):
                 for m in range(self.m_max):
                     for n in range(self.m_max):
-                        self.R_mat[i, m, n] = self._two_center_int(m=m, n=n, R=R, operator=lambda x: x * self.x_space) * -1j
+                        self.R_mat[i, m, n] = self._two_center_int(m=m, n=n, R=R, operator=lambda x: x * (self.x_space-0.5 * R * self.a)) * -1j
             np.save("R_mat.npy", self.R_mat)
 
     def calc_H_mat(self):
@@ -208,7 +212,7 @@ def shifted_function(R, m, a, x):
     return psi_shift
 
 if __name__ == "__main__":
-    matrices = LCAOMatrices(a=1.5, n_points=100, num_k=500, cached_int=False)
+    matrices = LCAOMatrices(a=2.5, n_points=100, num_k=100, cached_int=False)
     matrices.get_interals()
     matrices.get_H_blocks()
     matrices.get_S_blocks()
@@ -216,7 +220,8 @@ if __name__ == "__main__":
     matrices.get_transform_S()
     matrices.get_D_orth()
     matrices.get_H_orth()
-    matrices.check_eigval()
+    # matrices.check_D_hermiticity()
+    # matrices.check_eigval()
     # print(matrices.D_orth)
     # print(matrices.H_orth)
     # print(matrices.nablak_blocks)
