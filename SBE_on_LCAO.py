@@ -5,6 +5,7 @@ import scipy.linalg as la
 import scipy.constants as constants
 from unit_conversion import eV_to_au, au_to_ev, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au, au_to_A
 from scipy.integrate import solve_ivp
+from LCAO_for_SBE import LCAOAtomIntegrals, LCAOMatrices
 
 class BandStructure:
 
@@ -45,6 +46,26 @@ class Simulation:
     def define_pulse(self, sigma, lam, t_start, E0):
         """sigma and t_start in fs, E0 in V/m, lam in nm"""
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_start=t_start, E0=E0)
+
+    def use_LCAO(self, num_k, a, T2=0):
+        self.T2 = fs_to_au(T2)
+        self.a = angstrom_to_bohr(a)
+        self.num_k = num_k
+        matrices = LCAOMatrices(a=a, n_points=200, num_k=num_k)
+        self.k_list = matrices.k_list
+        self.mat_init = np.zeros((self.num_k, 2, 2), dtype='complex')
+        self.mat_init[:,1,1] = 1 # fully populate valence band
+        matrices.get_interals()
+        matrices.get_H_blocks()
+        matrices.get_S_blocks()
+        matrices.get_nablak_blocks()
+        matrices.get_transform_S()
+        matrices.get_D_orth()
+        matrices.get_H_orth()
+        self.h_const = matrices.H_orth
+        self.dipole_mat = matrices.D_orth
+        
+
     
     def define_system(self, num_k, a, T2=0):
         """a in angstrom"""
@@ -167,9 +188,6 @@ class Simulation:
         plt.show()
         
 
-
-
-
 class Field:
     """must include a method with t as input"""
 
@@ -249,6 +267,19 @@ class Plot:
         ax.set_ylabel("j / A")
         plt.show()
 
+    def plot_bands(self):
+        H = self.simulation.h_const
+        k_list = self.simulation.k_list
+        bands = np.zeros((self.simulation.num_k, 2))
+        for i,k in enumerate(k_list):
+            eigval, eigvec = la.eigh(H[i])
+            bands[i] = eigval
+        bands = bands.T
+        plt.plot(k_list, bands[0])
+        plt.plot(k_list, bands[1])
+        plt.show()
+
+
     
 
 
@@ -257,29 +288,17 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=100, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=1240, t_start=50, E0=3e8) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.define_system(num_k=100, a=9.8, T2=10) 
-    sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
-    sim.set_H_constant(dipole_element=9e-29) # 9e-29 corresponds to roundabout 9 a.u.
+    sim = Simulation(t_end=100, n_steps=1000)
+    sim.define_pulse(sigma=5, lam=1240, t_start=50, E0=0) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.use_LCAO(num_k=100, a=1.3)
     sim.integrate() 
-    sim.get_current()
+    # sim.get_current()
     results = Plot(sim)
+    results.plot_bands()
     # sim.pulse.get_vector_potential()
     # results.plot_field_A()
     results.get_heatmap_rho()
-    results.plot_current()
-    sim.calculate_spectrum()
+    # results.plot_current()
+    # sim.calculate_spectrum()
     
     results.plot_density_matrix(k_index=0)
-
-    
-"""
-independently: write circularly polarized light
-solve SBE ode integrate
-equidistant time steps
-nyquist theorem for time step estimation delta e delta t roundabout hbar
-write definiton vector potential based on E0, ignore envelope
-chekc for k dependence of simulation
-sum diagonal elements over k (integrate) plot over time, norm to electrons / volume cell
-"""
