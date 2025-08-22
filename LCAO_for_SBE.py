@@ -79,7 +79,11 @@ class LCAOMatrices:
         # print(test)
         # UDUdagger = np.einsum('kab, kbc, kcd -> kad', U_blocks, D_blocks, U_dagger_blocks)
         # print(np.allclose(UDUdagger, self.S_blocks))
+        # plt.plot(self.k_list, diag[:,1,1])
+        # plt.plot(self.k_list, diag[:,0,0])
+        # plt.show()
         self.S_minus_half = np.einsum('kab, kbc, kcd -> kad', unitary, diag_minus_half, U_dagger) 
+        # print(self.S_minus_half[30])
         print(np.allclose(np.eye(self.m_max),np.einsum('kab, kbc, kcd -> kad', self.S_minus_half, self.S_minus_half, self.S_blocks))) 
 
     def calc_k_partial(self, block_mat):
@@ -94,16 +98,19 @@ class LCAOMatrices:
     def get_D_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
+        # print(self.calc_k_partial(S_half)[30])
         A = S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half)
         B = S_half_adj @ self.nablak_blocks @ S_half 
-        A = A[20]
-        B = B[20]
+        A = A[50]
+        B = B[50]
         C = 1j*(A + B)
         print(A)
         print(B)
         print(f"imag: {np.imag(C)}")
         print(f"real: {np.real(C)}")
         self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
+        self.D_orth = 0.5 * (self.D_orth + np.transpose(self.D_orth.conj(), axes=(0,2,1)))
+        print(self.D_orth[50])
 
     def get_H_orth(self):
         S_half = self.S_minus_half
@@ -139,7 +146,7 @@ class LCAOAtomIntegrals:
         self.cached_int = cached_int
     
     def create_potential(self):
-        x_u, V_u = make_potential_unitcell(lambda x : poeschl_teller(x, lam=3), n_points=self.n_points, a=self.a)
+        x_u, V_u = make_potential_unitcell(lambda x : poeschl_teller(x, lam=5), n_points=self.n_points, a=self.a)
         self.x_space, self.V = make_supercell(x_u, V_u, n_super=self.R_max+2) # choose supercell big enough for all integrals until R_max
  
     def calc_S_mat(self):
@@ -161,7 +168,8 @@ class LCAOAtomIntegrals:
             for i, R in enumerate(range(-self.R_max, self.R_max +1)):
                 for m in range(self.m_max):
                     for n in range(self.m_max):
-                        self.R_mat[i, m, n] = self._two_center_int(m=m, n=n, R=R, operator=lambda x: x * (self.x_space-0.5 * R * self.a)) * -1j
+                        self.R_mat[i, m, n] = self._two_center_int(m=m, n=n, R=R, operator=lambda x: x * (self.x_space)) * 1j
+
             np.save("R_mat.npy", self.R_mat)
 
     def calc_H_mat(self):
@@ -212,7 +220,7 @@ def shifted_function(R, m, a, x):
     return psi_shift
 
 if __name__ == "__main__":
-    matrices = LCAOMatrices(a=2.5, n_points=100, num_k=100, cached_int=False)
+    matrices = LCAOMatrices(a=2.5, n_points=100, num_k=5000, cached_int=False)
     matrices.get_interals()
     matrices.get_H_blocks()
     matrices.get_S_blocks()

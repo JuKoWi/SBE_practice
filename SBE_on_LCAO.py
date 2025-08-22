@@ -288,17 +288,9 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=100, n_steps=1000)
-    sim.define_pulse(sigma=5, lam=1240, t_start=50, E0=0) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=100, a=1.3)
+    sim = Simulation(t_end=100, n_steps=5000)
+    sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.use_LCAO(num_k=1100, a=0.58)
     sim.integrate() 
-    # sim.get_current()
     results = Plot(sim)
-    results.plot_bands()
-    # sim.pulse.get_vector_potential()
-    # results.plot_field_A()
     results.get_heatmap_rho()
-    # results.plot_current()
-    # sim.calculate_spectrum()
-    
-    results.plot_density_matrix(k_index=0)
