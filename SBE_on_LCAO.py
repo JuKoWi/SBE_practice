@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
@@ -7,32 +8,7 @@ from unit_conversion import eV_to_au, au_to_ev, angstrom_to_bohr, bohr_to_angstr
 from scipy.integrate import solve_ivp
 from LCAO_for_SBE import LCAOAtomIntegrals, LCAOMatrices
 
-class BandStructure:
-
-    def __init__(self, Ec, Ev, tc, tv, a):
-        """give inputs in eV, angstrom"""
-        self.Ec = eV_to_au(Ec)
-        self.Ev = eV_to_au(Ev)
-        self.tc = eV_to_au(tc)
-        self.tv = eV_to_au(tv)
-        self.a = angstrom_to_bohr(a)
-    
-    
-    def get_H_mat(self, k):
-        H = np.zeros((2,2))
-        H[0,0] = self.Ec + self.tc * np.cos(k * self.a)
-        H[1,1] = self.Ev + self.tv * np.cos(k * self.a)
-        return H
-    
-    def get_H_partial_k(self, k):
-        H = np.zeros((2,2))
-        H[0,0] = -self.tc * self.a * np.sin(k * self.a)
-        H[1,1] = -self.tv * self.a * np.sin(k * self.a)
-        return H
-
 class Simulation:
-    """rewrite such that pulse and bands are provided as the respective classes
-    only time interval /discretization for initialization"""
     def __init__(self, t_end, n_steps):
         """t-end in fs"""
         self.t_end = fs_to_au(t_end)
@@ -40,21 +16,17 @@ class Simulation:
         self.n_steps = n_steps
         self.solution = None
 
-    def define_bands(self, Ec, Ev, tc, tv):
-        self.bands = BandStructure(Ec=Ec, Ev=Ev, tc=tc, tv=tv, a=bohr_to_angstrom(self.a))
-
     def define_pulse(self, sigma, lam, t_start, E0):
         """sigma and t_start in fs, E0 in V/m, lam in nm"""
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_start=t_start, E0=E0)
 
-    def use_LCAO(self, num_k, a, T2=0):
+    def use_LCAO(self, num_k, a, scale_H, m_max, T2=0):
+        self.m_max = m_max
         self.T2 = fs_to_au(T2)
         self.a = angstrom_to_bohr(a)
         self.num_k = num_k
-        matrices = LCAOMatrices(a=a, n_points=200, num_k=num_k)
-        self.k_list = matrices.k_list
-        self.mat_init = np.zeros((self.num_k, 2, 2), dtype='complex')
-        self.mat_init[:,1,1] = 1 # fully populate valence band
+        
+        matrices = LCAOMatrices(a=self.a, n_points=100, num_k=num_k, m_max=self.m_max, scale_H=scale_H)
         matrices.get_interals()
         matrices.get_H_blocks()
         matrices.get_S_blocks()
@@ -62,39 +34,31 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
+        matrices.overwrite_matrices()
+        matrices.get_diagonalize_H()
+        # matrices.plot_bands_directly()
+        matrices.check_eigval()
+
+        self.k_list = matrices.k_list
+        
+        self.to_H_basis = matrices.diagonalize_H
+        print(self.to_H_basis)
+        self.to_orth_basis = matrices.diagonalize_H_dagger
+        print(self.to_orth_basis)
+        self.mat_init = np.zeros((self.num_k, self.m_max, self.m_max), dtype='complex')
+        # self.mat_init[:,1,1] = 1 # fully populate valence band
+        self.mat_init[:,0,0] = 1 # fully populate valence band
+        self.mat_init = self.to_H_basis @ self.mat_init @ self.to_orth_basis
+        
         self.h_const = matrices.H_orth
         self.dipole_mat = matrices.D_orth
-        
 
-    
-    def define_system(self, num_k, a, T2=0):
-        """a in angstrom"""
-        self.num_k = num_k
-        self.T2 = fs_to_au(T2)
-        self.a = angstrom_to_bohr(a)
-        self.k_list = np.linspace(-np.pi/self.a, np.pi/self.a, num_k, endpoint=False)
-        self.mat_init = np.zeros((self.num_k, 2, 2), dtype='complex')
-        self.mat_init[:,1,1] = 1 # fully populate valence band
-
-    def phase_func(self, k):
-        return 2 * np.pi * k / -self.k_list[0]
-
-    def set_H_constant(self, dipole_element):
-        dipole_element = Cm_to_au(dipole_element)
-        self.h_const = np.zeros((self.num_k,2,2))
-        self.dipole_mat = np.zeros((self.num_k,2,2), dtype='complex')
-        for i,k in enumerate(self.k_list):
-            self.h_const[i] = self.bands.get_H_mat(k)
-            self.dipole_mat[i,0,1] = dipole_element * np.exp(1j*self.phase_func(k))
-            self.dipole_mat[i,1,0] = dipole_element * np.exp(-1j*self.phase_func(k))
-    
     def get_H(self, t):
         h_mat = self.pulse.get_E(t) * self.dipole_mat + self.h_const
         return h_mat
 
     def commute(self, rho, t):
         H = self.get_H(t) 
-        # commutator = np.einsum('ijk, ikl -> ijl', H,rho) - np.einsum('ijk, ikl -> ijl', rho, H)
         commutator = H @ rho - rho @ H 
         return commutator
 
@@ -112,12 +76,13 @@ class Simulation:
         E = self.pulse.get_E(t) 
         dephasing = 0
         if self.T2 != 0:
-            dephasing = (1/self.T2) * (rho - rho * np.eye(2))
+            dephasing = (1/self.T2) * (rho - rho * np.eye(self.m_max))
         rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) - dephasing 
         return self.rho_to_y(rhs) 
 
     def integrate(self):
         """needs self.rhs"""
+        print('start integration')
         solution = solve_ivp(lambda t, y : self.get_rhs(t=t, y=y), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
                             # method='BDF', 
                             # atol=1e-12, rtol=1e-12,
@@ -141,25 +106,20 @@ class Simulation:
         print(np.array_equal(test_array, result))
 
     def get_current(self):
-        H_partial = self.get_H_partial()
+        H_partial = self.get_k_partial(self.h_const)
         J = self.get_J(H_partial_k=H_partial)
-        rho_J = self.get_rho_J(J=J)
-        self.current = np.einsum('ijkk -> i',rho_J)
+        rho_J = self.get_rho_J(J=J, H_partial_k=H_partial) # rho * j(operator)
+        self.current = np.einsum('ijkk -> i',rho_J) #trace over j rho
     
-    def get_H_partial(self):
-        H_partial = np.zeros((self.num_k, 2, 2))
-        for i,k in enumerate(self.k_list):
-            H_partial[i] = self.bands.get_H_partial_k(k)
-        return H_partial
-
     def get_J(self, H_partial_k):
+        """ j(t) = i [r, H(t)]"""
         dipole_mat = self.dipole_mat
         h_null = self.h_const
         J = - (H_partial_k - 1j * (np.einsum('kab, kbc -> kac', dipole_mat, h_null) - np.einsum('kab, kbc -> kac', h_null, dipole_mat)))
         return J
 
-    def get_rho_J(self, J):
-        J = self.get_J(H_partial_k=self.get_H_partial())
+    def get_rho_J(self, J, H_partial_k):
+        J = self.get_J(H_partial_k=H_partial_k)
         rho = self.solution
         return np.einsum('tkab,kbc -> tkac', rho, J)
     
@@ -213,27 +173,24 @@ class Field:
 class Plot:
 
     def __init__(self, simulation):
+        self.m_max = simulation.m_max
         self.time = simulation.time
         self.solution = simulation.solution
         self.k_list = simulation.k_list
         self.E_field = simulation.pulse.E_field
         self.simulation = simulation
+        self.to_H_basis = simulation.to_H_basis
+        self.to_orth_basis = simulation.to_orth_basis
     
     def get_heatmap_rho(self):
-        rho = np.real(self.solution)
-        fig, axs = plt.subplots(3,1, figsize=(8,4), sharex=True)
-        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,0].T, shading='auto')
-        im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='auto')
-        axs[2].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
-        axs[0].set_title('conduction band')
-        axs[1].set_title('valence band')
-        axs[0].set_xlabel('t / fs')
-        axs[0].set_ylabel('k / a.u.')
-        axs[1].set_xlabel('t / fs')
-        axs[1].set_ylabel('k')
-        axs[2].set_ylabel(r'E / V $m^{-1}$')
-        fig.colorbar(im1, ax=axs[0], orientation='horizontal')
-        fig.colorbar(im2, ax=axs[1], orientation='horizontal')
+        rho = np.abs(self.to_orth_basis @ self.solution @ self.to_H_basis)
+        fig, axs = plt.subplots(self.m_max+1,1, figsize=(8,4), sharex=True)
+        for i in range(self.m_max):
+            im = axs[i].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,i,i].T, shading='auto')
+            fig.colorbar(im, ax=axs[i], orientation='horizontal')
+        axs[self.m_max].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
+        axs[self.m_max].set_xlabel('t / fs')
+        axs[self.m_max].set_ylabel(r'E / V $m^{-1}$')
         plt.show()
     
     def plot_field_E(self):
@@ -270,7 +227,7 @@ class Plot:
     def plot_bands(self):
         H = self.simulation.h_const
         k_list = self.simulation.k_list
-        bands = np.zeros((self.simulation.num_k, 2))
+        bands = np.zeros((self.simulation.num_k, self.m_max))
         for i,k in enumerate(k_list):
             eigval, eigvec = la.eigh(H[i])
             bands[i] = eigval
@@ -278,10 +235,13 @@ class Plot:
         plt.plot(k_list, bands[0])
         plt.plot(k_list, bands[1])
         plt.show()
-
-
     
-
+    def plot_population(self):
+        rho = self.to_orth_basis @ self.solution @ self.to_H_basis
+        rho_no_k = np.sum(rho, axis=1)/np.shape(self.k_list)[0]
+        for i in range(self.m_max):
+            plt.plot(self.time, rho_no_k[:,i,i])
+        plt.show()
 
 def gaussian_sine(t, omega, sigma, t_start, E0):
     return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2))
@@ -290,7 +250,11 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=100, n_steps=5000)
     sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1100, a=0.58)
+    sim.use_LCAO(num_k=500, a=1.32, scale_H=1, m_max=2)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()
+    sim.get_current()
+    results = Plot(sim)
+    results.plot_current()
+    sim.calculate_spectrum()

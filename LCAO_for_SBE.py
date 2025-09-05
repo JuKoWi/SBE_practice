@@ -4,6 +4,7 @@ from scipy.interpolate import UnivariateSpline
 from utilities import make_potential_unitcell, make_supercell, poeschl_teller, inner_prod
 import os
 from scipy.linalg import eigh, ishermitian
+from unit_conversion import Cm_to_au, eV_to_au
 
 
 
@@ -11,17 +12,18 @@ from scipy.linalg import eigh, ishermitian
 class LCAOMatrices:
     """calculate integrals in orthogonal u basis for SBE"""
 
-    def __init__(self, a, n_points, num_k, cached_int=False):
+    def __init__(self, a, n_points, num_k, m_max, scale_H, cached_int=False):
+        self.scale_H = scale_H
+        self.m_max = m_max
         self.a = a
         self.n_points = n_points
         self.num_k = num_k
-        self.k_list = np.linspace(-np.pi/a, np.pi/a, num_k, endpoint=False)
+        self.k_list = np.linspace(-np.pi/a , np.pi/a, num_k, endpoint=False)
         self.n_blocks = len(self.k_list)
         self.cached_int = cached_int
 
     def get_interals(self):
-        self.integrals = LCAOAtomIntegrals(a=self.a, n_points=self.n_points, cached_int=self.cached_int)
-        self.m_max = self.integrals.m_max
+        self.integrals = LCAOAtomIntegrals(a=self.a, n_points=self.n_points, m_max=self.m_max, scale_H=self.scale_H, cached_int=self.cached_int)
         self.integrals.create_potential()
         self.integrals.calc_S_mat()
         self.integrals.calc_H_mat()
@@ -84,7 +86,8 @@ class LCAOMatrices:
         # plt.show()
         self.S_minus_half = np.einsum('kab, kbc, kcd -> kad', unitary, diag_minus_half, U_dagger) 
         # print(self.S_minus_half[30])
-        print(np.allclose(np.eye(self.m_max),np.einsum('kab, kbc, kcd -> kad', self.S_minus_half, self.S_minus_half, self.S_blocks))) 
+        print(f"S-12 * S-12 * S = 1 {np.allclose(np.eye(self.m_max),np.einsum('kab, kbc, kcd -> kad', self.S_minus_half, self.S_minus_half, self.S_blocks))}") 
+    
 
     def calc_k_partial(self, block_mat):
         xplush = np.roll(block_mat, shift=-1, axis=0)
@@ -98,19 +101,7 @@ class LCAOMatrices:
     def get_D_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
-        # print(self.calc_k_partial(S_half)[30])
-        A = S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half)
-        B = S_half_adj @ self.nablak_blocks @ S_half 
-        A = A[50]
-        B = B[50]
-        C = 1j*(A + B)
-        print(A)
-        print(B)
-        print(f"imag: {np.imag(C)}")
-        print(f"real: {np.real(C)}")
         self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
-        self.D_orth = 0.5 * (self.D_orth + np.transpose(self.D_orth.conj(), axes=(0,2,1)))
-        print(self.D_orth[50])
 
     def get_H_orth(self):
         S_half = self.S_minus_half
@@ -118,35 +109,76 @@ class LCAOMatrices:
         # print(self.H_blocks)
         self.H_orth = S_half_adj @ self.H_blocks @ S_half 
 
+    def get_diagonalize_H(self):
+        unitary = np.zeros_like(self.H_orth)
+        unitary_dagger = np.zeros_like(self.H_orth)
+        for i, k in enumerate(self.k_list):
+            eigval, eigvec = eigh(self.H_orth[i]) # doublecheck, if transpose of U necessary
+            unitary[i] = eigvec
+            unitary_dagger[i] = eigvec.conj().T
+        self.diagonalize_H = unitary
+        self.diagonalize_H_dagger = unitary_dagger
+
+
     def check_eigval(self):
-        bands = np.zeros((self.num_k,2))
+        bands = np.zeros((self.num_k,self.m_max))
         for i,k in enumerate(self.k_list):
             eig1, eigvec1 = eigh(self.H_blocks[i], self.S_blocks[i])
             eig2, eigvec2 = eigh(self.H_orth[i])
             bands[i] = eig2
             # print(np.isclose(eig1, eig2, rtol=1e-10))
         bands = bands.T
-        plt.plot(self.k_list, bands[0])
-        plt.plot(self.k_list, bands[1])
+        for m in range(self.m_max):
+            plt.plot(self.k_list, bands[m])
         plt.show()
     
     def check_D_hermiticity(self):
         for i,k in enumerate(self.k_list):
             print(ishermitian(self.D_orth[i], atol=1e-10))
 
+    def overwrite_matrices(self):
+        self.D_orth = np.zeros_like(self.D_orth)
+        self.H_orth = np.zeros_like(self.H_orth)
+        Ec = eV_to_au(4)
+        Ev = eV_to_au(-3)
+        tc = eV_to_au(-1.5)
+        tv = eV_to_au(0.5)
+        for i,k in enumerate(self.k_list):
+            self.D_orth[i, 1, 0]= Cm_to_au(9e-29)
+            self.D_orth[i, 0, 1]= Cm_to_au(9e-29)
+            self.H_orth[i, 1,1]= Ec + tc * np.cos(k * self.a)
+            self.H_orth[i, 0,0]= Ev + tv * np.cos(k * self.a)
+    
+    def plot_bands_directly(self):
+        bands = np.zeros((self.num_k, self.m_max))
+        for i, k in enumerate(self.k_list):
+            eigval, eigvec = eigh(self.H_blocks[i], self.S_blocks[i])
+            bands[i] = eigval
+        bands = bands.T
+        for i in range(self.m_max):
+            plt.plot(self.k_list, bands[i])
+        plt.show()
+        
+
+
 
 class LCAOAtomIntegrals:
     """construct integrals between two atom orbitals"""
 
-    def __init__(self, a, n_points, cached_int):
+    def __init__(self, a, n_points, m_max, cached_int, scale_H):
+        self.scale_H = scale_H
         self.R_max = 4
-        self.m_max = 2
-        self.a = a
+        self.m_max = m_max 
+        self.a = a 
         self.n_points = n_points # grid points per uni cell
         self.cached_int = cached_int
     
     def create_potential(self):
-        x_u, V_u = make_potential_unitcell(lambda x : poeschl_teller(x, lam=5), n_points=self.n_points, a=self.a)
+        x_u, V_u = make_potential_unitcell(
+            # lambda x:-5/((x*10)**2+ 1),
+            lambda x : poeschl_teller(x, lam=5), 
+            n_points=self.n_points, a=self.a, scale_H=self.scale_H
+        )
         self.x_space, self.V = make_supercell(x_u, V_u, n_super=self.R_max+2) # choose supercell big enough for all integrals until R_max
  
     def calc_S_mat(self):
@@ -220,21 +252,13 @@ def shifted_function(R, m, a, x):
     return psi_shift
 
 if __name__ == "__main__":
-    matrices = LCAOMatrices(a=2.5, n_points=100, num_k=5000, cached_int=False)
+    matrices = LCAOMatrices(a=2.5, n_points=200, num_k=100, m_max=4, scale_H=1, cached_int=False) #good parameters: a=2.5 for lam=5
     matrices.get_interals()
     matrices.get_H_blocks()
     matrices.get_S_blocks()
-    matrices.get_nablak_blocks()
-    matrices.get_transform_S()
-    matrices.get_D_orth()
-    matrices.get_H_orth()
-    # matrices.check_D_hermiticity()
-    # matrices.check_eigval()
-    # print(matrices.D_orth)
-    # print(matrices.H_orth)
-    # print(matrices.nablak_blocks)
-    # print(matrices.S_blocks)
-    # print(matrices.H_blocks)
-    # print(matrices.integrals.S_mat)
-    # matrices.integrals.check_mat_symmetry(matrices.integrals.R_mat)
-    # print(matrices.integrals.S_mat)
+    # matrices.get_nablak_blocks()
+    # matrices.get_transform_S()
+    # matrices.get_D_orth()
+    # matrices.get_H_orth()
+    # # matrices.check_eigval()
+    matrices.plot_bands_directly()

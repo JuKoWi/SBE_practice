@@ -56,7 +56,7 @@ class Simulation:
         self.mat_init[:,1,1] = 1 # fully populate valence band
 
     def phase_func(self, k):
-        return 2 * np.pi * k / -self.k_list[0]
+        return 2 * np.pi * k / -self.k_list[0] *0
 
     def set_H_constant(self, dipole_element):
         dipole_element = Cm_to_au(dipole_element)
@@ -73,7 +73,6 @@ class Simulation:
 
     def commute(self, rho, t):
         H = self.get_H(t) 
-        # commutator = np.einsum('ijk, ikl -> ijl', H,rho) - np.einsum('ijk, ikl -> ijl', rho, H)
         commutator = H @ rho - rho @ H 
         return commutator
 
@@ -134,7 +133,7 @@ class Simulation:
     def get_J(self, H_partial_k):
         dipole_mat = self.dipole_mat
         h_null = self.h_const
-        J = - (H_partial_k - 1j * (np.einsum('kab, kbc -> kac', dipole_mat, h_null) - np.einsum('kab, kbc -> kac', h_null, dipole_mat)))
+        J = - (H_partial_k - 1j * (np.einsum('kab, kbc -> kac', dipole_mat, h_null) - np.einsum('kab, kbc -> kac', h_null, dipole_mat))) # compare Silva
         return J
 
     def get_rho_J(self, J):
@@ -258,9 +257,9 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 
 if __name__ =="__main__":
     sim = Simulation(t_end=100, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=1240, t_start=50, E0=3e8) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.define_system(num_k=100, a=9.8, T2=10) 
-    sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5)
+    sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.define_system(num_k=300, a=1.32, T2=0) 
+    sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5) # default: Ec=4, Ev=-3, tc=-1.5, tv=0.5
     sim.set_H_constant(dipole_element=9e-29) # 9e-29 corresponds to roundabout 9 a.u.
     sim.integrate() 
     sim.get_current()
