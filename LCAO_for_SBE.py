@@ -148,6 +148,17 @@ class LCAOMatrices:
             self.D_orth[i, 0, 1]= Cm_to_au(9e-29)
             self.H_orth[i, 1,1]= Ec + tc * np.cos(k * self.a)
             self.H_orth[i, 0,0]= Ev + tv * np.cos(k * self.a)
+        unitary = np.zeros((self.num_k, self.m_max, self.m_max))
+        for i, k in enumerate(self.k_list):
+            par_k = np.sin(self.a * k)
+            unitary[i, 0,0] = np.cos(par_k)
+            unitary[i,0,1] = -np.sin(par_k)
+            unitary[i,1,0] = np.sin(par_k)
+            unitary[i,1,1] = np.cos(par_k)
+        # print(unitary)
+        # print(np.transpose(unitary, axes=(0,2,1)))
+        self.D_orth = np.transpose(unitary, axes=(0,2,1)) @ self.D_orth @ unitary
+        self.H_orth = np.transpose(unitary, axes=(0,2,1)) @ self.H_orth @ unitary
     
     def plot_bands_directly(self):
         bands = np.zeros((self.num_k, self.m_max))

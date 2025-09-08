@@ -34,22 +34,19 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
-        matrices.overwrite_matrices()
+        # matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
         # matrices.plot_bands_directly()
         matrices.check_eigval()
 
         self.k_list = matrices.k_list
         
-        self.to_H_basis = matrices.diagonalize_H
-        print(self.to_H_basis)
-        self.to_orth_basis = matrices.diagonalize_H_dagger
-        print(self.to_orth_basis)
+        self.X = matrices.diagonalize_H
+        self.X_inv = matrices.diagonalize_H_dagger
         self.mat_init = np.zeros((self.num_k, self.m_max, self.m_max), dtype='complex')
-        # self.mat_init[:,1,1] = 1 # fully populate valence band
+        self.mat_init[:,1,1] = 1 # fully populate valence band
         self.mat_init[:,0,0] = 1 # fully populate valence band
-        self.mat_init = self.to_H_basis @ self.mat_init @ self.to_orth_basis
-        
+        self.mat_init = self.X @ self.mat_init @ self.X_inv
         self.h_const = matrices.H_orth
         self.dipole_mat = matrices.D_orth
 
@@ -76,8 +73,10 @@ class Simulation:
         E = self.pulse.get_E(t) 
         dephasing = 0
         if self.T2 != 0:
-            dephasing = (1/self.T2) * (rho - rho * np.eye(self.m_max))
-        rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) - dephasing 
+            transformed_rho = self.X_inv @ rho @ self.X
+            dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_max))) @ self.X_inv
+        k_deriv = self.X @ self.get_k_partial(self.X_inv @ rho @ self.X) @ self.X_inv
+        rhs = 1j*self.commute(rho, t) + E * k_deriv  - dephasing 
         return self.rho_to_y(rhs) 
 
     def integrate(self):
@@ -88,7 +87,9 @@ class Simulation:
                             # atol=1e-12, rtol=1e-12,
                             )
         rho_time = solution.y.T # transpose to switch time and other dimensions
-        self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])])
+        self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])]) # rho(t) in orthogonal basis (not an energy eigenbasis)
+        test = self.X_inv @ self.solution @ self.X
+        print(test[0,:,1,1])
     
     def y_to_rho(self, y):
         """takes matrix shape and returns flat shape with double the length"""
@@ -179,11 +180,11 @@ class Plot:
         self.k_list = simulation.k_list
         self.E_field = simulation.pulse.E_field
         self.simulation = simulation
-        self.to_H_basis = simulation.to_H_basis
-        self.to_orth_basis = simulation.to_orth_basis
+        self.X = simulation.X
+        self.X_inv = simulation.X_inv
     
     def get_heatmap_rho(self):
-        rho = np.abs(self.to_orth_basis @ self.solution @ self.to_H_basis)
+        rho = np.abs(self.X_inv @ self.solution @ self.X)
         fig, axs = plt.subplots(self.m_max+1,1, figsize=(8,4), sharex=True)
         for i in range(self.m_max):
             im = axs[i].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,i,i].T, shading='auto')
@@ -203,7 +204,7 @@ class Plot:
 
     def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
-        ax.plot(au_to_fs(self.time), np.sum(np.abs(self.solution[:,:,0,0]), axis=1)) 
+        ax.plot(au_to_fs(self.time), np.sum(np.abs(self.solution[:,:,1,1]), axis=1)) 
         plt.show()
 
     def plot_field_A(self):
@@ -250,7 +251,7 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=100, n_steps=5000)
     sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=500, a=1.32, scale_H=1, m_max=2)
+    sim.use_LCAO(num_k=300, a=1.32, scale_H=1, m_max=4, T2=10)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()
@@ -258,3 +259,4 @@ if __name__ =="__main__":
     results = Plot(sim)
     results.plot_current()
     sim.calculate_spectrum()
+    results.plot_density_matrix(k_index=0)

@@ -203,15 +203,15 @@ class Plot:
     def get_heatmap_rho(self):
         rho = np.real(self.solution)
         fig, axs = plt.subplots(3,1, figsize=(8,4), sharex=True)
-        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,0].T, shading='auto')
-        im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='auto')
+        im1 = axs[0].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,1,1].T, shading='auto')
+        im2 = axs[1].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,0,0].T, shading='auto')
         axs[2].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
-        axs[0].set_title('conduction band')
-        axs[1].set_title('valence band')
-        axs[0].set_xlabel('t / fs')
-        axs[0].set_ylabel('k / a.u.')
+        axs[1].set_title('conduction band')
+        axs[0].set_title('valence band')
         axs[1].set_xlabel('t / fs')
-        axs[1].set_ylabel('k')
+        axs[1].set_ylabel('k / a.u.')
+        axs[0].set_xlabel('t / fs')
+        axs[0].set_ylabel('k')
         axs[2].set_ylabel(r'E / V $m^{-1}$')
         fig.colorbar(im1, ax=axs[0], orientation='horizontal')
         fig.colorbar(im2, ax=axs[1], orientation='horizontal')
@@ -258,7 +258,7 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=100, n_steps=5000)
     sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.define_system(num_k=300, a=1.32, T2=0) 
+    sim.define_system(num_k=1000, a=1.32, T2=10) 
     sim.define_bands(Ec=4, Ev=-3, tc=-1.5, tv=0.5) # default: Ec=4, Ev=-3, tc=-1.5, tv=0.5
     sim.set_H_constant(dipole_element=9e-29) # 9e-29 corresponds to roundabout 9 a.u.
     sim.integrate() 
