@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 import matplotlib.pyplot as plt
 from scipy.interpolate import UnivariateSpline
 from utilities import make_potential_unitcell, make_supercell, poeschl_teller, inner_prod
@@ -76,17 +77,17 @@ class LCAOMatrices:
             U_dagger[i] = eigvec.conj().T
             inv_sqrt_eigval = np.diag(1/np.sqrt(eigval))
             diag_minus_half[i] = inv_sqrt_eigval
-            # print(np.allclose(unitary.conj().T @ unitary, np.eye(self.m_max)))
-        # test = np.einsum('kab, kbc -> kac', U_blocks, U_dagger_blocks)
+            # print(np.allclose(np.transpose(unitary[i].conj(), axes=(1,0))@ unitary[i], np.eye(self.m_max), atol=1e-12))
+        # test = np.einsum('kab, kbc -> kac', unitary, U_dagger)
         # print(test)
-        # UDUdagger = np.einsum('kab, kbc, kcd -> kad', U_blocks, D_blocks, U_dagger_blocks)
+        # UDUdagger = np.einsum('kab, kbc, kcd -> kad', unitary, diag, U_dagger)
         # print(np.allclose(UDUdagger, self.S_blocks))
         # plt.plot(self.k_list, diag[:,1,1])
         # plt.plot(self.k_list, diag[:,0,0])
         # plt.show()
         self.S_minus_half = np.einsum('kab, kbc, kcd -> kad', unitary, diag_minus_half, U_dagger) 
         # print(self.S_minus_half[30])
-        print(f"S-12 * S-12 * S = 1 {np.allclose(np.eye(self.m_max),np.einsum('kab, kbc, kcd -> kad', self.S_minus_half, self.S_minus_half, self.S_blocks))}") 
+        # print(f"S-12 * S-12 * S = 1 {np.allclose(np.eye(self.m_max),np.einsum('kab, kbc, kcd -> kad', self.S_minus_half, self.S_minus_half, self.S_blocks))}") 
     
 
     def calc_k_partial(self, block_mat):
@@ -101,7 +102,16 @@ class LCAOMatrices:
     def get_D_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
+        # for i,k in enumerate(self.k_list):
+        #     print(ishermitian(S_half[i]))
+        #     print(S_half[i] @ S_half_adj[i])
         self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
+        for m in range(self.m_max):
+            for n in range(m):
+                self.D_orth[:,n,m] = np.real(self.D_orth[:,m,n]) - 1j * np.imag(self.D_orth[:,m,n])
+            self.D_orth[:,m,m] = np.real(self.D_orth[:,m,m])
+        # for i,k in enumerate(self.k_list):
+        #     print(ishermitian(self.D_orth[i]))
 
     def get_H_orth(self):
         S_half = self.S_minus_half
@@ -132,10 +142,6 @@ class LCAOMatrices:
             plt.plot(self.k_list, bands[m])
         plt.show()
     
-    def check_D_hermiticity(self):
-        for i,k in enumerate(self.k_list):
-            print(ishermitian(self.D_orth[i], atol=1e-10))
-
     def overwrite_matrices(self):
         self.D_orth = np.zeros_like(self.D_orth)
         self.H_orth = np.zeros_like(self.H_orth)
@@ -144,21 +150,26 @@ class LCAOMatrices:
         tc = eV_to_au(-1.5)
         tv = eV_to_au(0.5)
         for i,k in enumerate(self.k_list):
-            self.D_orth[i, 1, 0]= Cm_to_au(9e-29)
-            self.D_orth[i, 0, 1]= Cm_to_au(9e-29)
-            self.H_orth[i, 1,1]= Ec + tc * np.cos(k * self.a)
-            self.H_orth[i, 0,0]= Ev + tv * np.cos(k * self.a)
-        unitary = np.zeros((self.num_k, self.m_max, self.m_max))
-        for i, k in enumerate(self.k_list):
-            par_k = np.sin(self.a * k)
-            unitary[i, 0,0] = np.cos(par_k)
-            unitary[i,0,1] = -np.sin(par_k)
-            unitary[i,1,0] = np.sin(par_k)
-            unitary[i,1,1] = np.cos(par_k)
-        # print(unitary)
-        # print(np.transpose(unitary, axes=(0,2,1)))
-        self.D_orth = np.transpose(unitary, axes=(0,2,1)) @ self.D_orth @ unitary
-        self.H_orth = np.transpose(unitary, axes=(0,2,1)) @ self.H_orth @ unitary
+            self.D_orth[i,1,0] = Cm_to_au(9e-29)
+            self.D_orth[i,0,1] = Cm_to_au(9e-29)
+            self.H_orth[i,1,1] = Ec + tc * np.cos(k * self.a)
+            self.H_orth[i,0,0] = Ev + tv * np.cos(k * self.a)
+            self.H_orth[i,2,2] = eV_to_au(10)
+            self.D_orth[i,0,2] = Cm_to_au(9e-29)
+            self.D_orth[i,2,1] = Cm_to_au(9e-29)
+            self.D_orth[i,2,0] = Cm_to_au(9e-29)
+            self.D_orth[i,1,2] = Cm_to_au(9e-29)
+        # unitary = np.zeros((self.num_k, self.m_max, self.m_max))
+        # for i, k in enumerate(self.k_list):
+        #     par_k = np.sin(self.a * k)
+        #     unitary[i, 0,0] = np.cos(par_k)
+        #     unitary[i,0,1] = -np.sin(par_k)
+        #     unitary[i,1,0] = np.sin(par_k)
+        #     unitary[i,1,1] = np.cos(par_k)
+        # # print(unitary)
+        # # print(np.transpose(unitary, axes=(0,2,1)))
+        # self.D_orth = np.transpose(unitary, axes=(0,2,1)) @ self.D_orth @ unitary
+        # self.H_orth = np.transpose(unitary, axes=(0,2,1)) @ self.H_orth @ unitary
     
     def plot_bands_directly(self):
         bands = np.zeros((self.num_k, self.m_max))
@@ -169,7 +180,23 @@ class LCAOMatrices:
         for i in range(self.m_max):
             plt.plot(self.k_list, bands[i])
         plt.show()
-        
+
+    def analyze_dipole(self, real=True):
+        D = self.D_orth
+        if real:
+            D = np.real(self.D_orth)
+        else:
+            D = np.imag(self.D_orth)
+        for m in range(self.m_max):
+            for n in range(self.m_max):
+                plt.plot(self.k_list, np.imag(self.D_orth[:,m,n]), label=f"{m},{n}")
+        plt.legend()
+        plt.show()
+
+    def shift_band(self):
+        D = self.diagonalize_H_dagger @ self.H_orth @ self.diagonalize_H
+        D[:,2,2] -= 1.2
+        self.H_orth = self.diagonalize_H @ D @ self.diagonalize_H_dagger
 
 
 

@@ -34,10 +34,14 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
-        # matrices.overwrite_matrices()
+        matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
         # matrices.plot_bands_directly()
-        matrices.check_eigval()
+        # matrices.analyze_dipole(real=False)
+        # matrices.analyze_dipole(real=True)
+        # matrices.shift_band()
+        # matrices.check_eigval()
+        # sys.exit()
 
         self.k_list = matrices.k_list
         
@@ -89,7 +93,7 @@ class Simulation:
         rho_time = solution.y.T # transpose to switch time and other dimensions
         self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])]) # rho(t) in orthogonal basis (not an energy eigenbasis)
         test = self.X_inv @ self.solution @ self.X
-        print(test[0,:,1,1])
+        # print(test[0,:,1,1])
     
     def y_to_rho(self, y):
         """takes matrix shape and returns flat shape with double the length"""
@@ -251,7 +255,7 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=100, n_steps=5000)
     sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=300, a=1.32, scale_H=1, m_max=4, T2=10)
+    sim.use_LCAO(num_k=100, a=1.32, scale_H=1, m_max=3, T2=10)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()
