@@ -144,7 +144,7 @@ class LCAOMatrices:
     
     def overwrite_matrices(self):
         self.D_orth = np.zeros_like(self.D_orth)
-        self.H_orth = np.zeros_like(self.H_orth)
+        # self.H_orth = np.zeros_like(self.H_orth)
         Ec = eV_to_au(4)
         Ev = eV_to_au(-3)
         tc = eV_to_au(-1.5)
@@ -152,12 +152,12 @@ class LCAOMatrices:
         for i,k in enumerate(self.k_list):
             self.D_orth[i,1,0] = Cm_to_au(9e-29)
             self.D_orth[i,0,1] = Cm_to_au(9e-29)
-            self.H_orth[i,1,1] = Ec + tc * np.cos(k * self.a)
-            self.H_orth[i,0,0] = Ev + tv * np.cos(k * self.a)
-            self.H_orth[i,2,2] = eV_to_au(10)
-            self.D_orth[i,0,2] = Cm_to_au(9e-29)
+            # self.H_orth[i,1,1] = Ec + tc * np.cos(k * self.a)
+            # self.H_orth[i,0,0] = Ev + tv * np.cos(k * self.a)
+            # self.H_orth[i,2,2] = eV_to_au(10)
+            # self.D_orth[i,0,2] = Cm_to_au(9e-29)
             self.D_orth[i,2,1] = Cm_to_au(9e-29)
-            self.D_orth[i,2,0] = Cm_to_au(9e-29)
+            # self.D_orth[i,3,0] = Cm_to_au(9e-29)
             self.D_orth[i,1,2] = Cm_to_au(9e-29)
         # unitary = np.zeros((self.num_k, self.m_max, self.m_max))
         # for i, k in enumerate(self.k_list):
@@ -166,6 +166,7 @@ class LCAOMatrices:
         #     unitary[i,0,1] = -np.sin(par_k)
         #     unitary[i,1,0] = np.sin(par_k)
         #     unitary[i,1,1] = np.cos(par_k)
+        #     unitary[i,2,2] = 1
         # # print(unitary)
         # # print(np.transpose(unitary, axes=(0,2,1)))
         # self.D_orth = np.transpose(unitary, axes=(0,2,1)) @ self.D_orth @ unitary
@@ -189,7 +190,7 @@ class LCAOMatrices:
             D = np.imag(self.D_orth)
         for m in range(self.m_max):
             for n in range(self.m_max):
-                plt.plot(self.k_list, np.imag(self.D_orth[:,m,n]), label=f"{m},{n}")
+                plt.plot(self.k_list, D[:,m,n], label=f"{m},{n}")
         plt.legend()
         plt.show()
 

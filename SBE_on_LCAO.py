@@ -37,9 +37,9 @@ class Simulation:
         matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
         # matrices.plot_bands_directly()
-        # matrices.analyze_dipole(real=False)
-        # matrices.analyze_dipole(real=True)
-        # matrices.shift_band()
+        matrices.analyze_dipole(real=False)
+        matrices.analyze_dipole(real=True)
+        matrices.shift_band()
         # matrices.check_eigval()
         # sys.exit()
 
@@ -79,7 +79,8 @@ class Simulation:
         if self.T2 != 0:
             transformed_rho = self.X_inv @ rho @ self.X
             dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_max))) @ self.X_inv
-        k_deriv = self.X @ self.get_k_partial(self.X_inv @ rho @ self.X) @ self.X_inv
+        # k_deriv = self.X @ self.get_k_partial(self.X_inv @ rho @ self.X) @ self.X_inv
+        k_deriv = self.get_k_partial(self.X_inv) @ rho @ self.X + self.X_inv @ self.get_k_partial(rho) @ self.X + self.X_inv @ rho @ self.get_k_partial(self.X)
         rhs = 1j*self.commute(rho, t) + E * k_deriv  - dephasing 
         return self.rho_to_y(rhs) 
 

@@ -1,5 +1,4 @@
 import numpy as np
-import sympy as sp
 import matplotlib.pyplot as plt
 
 def make_potential_unitcell(atom_pot, n_points, a, scale_H): # a is length of the unit cell, n_points the number of points that will be in each unit cell of the supercell
