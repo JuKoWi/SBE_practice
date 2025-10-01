@@ -34,22 +34,21 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
-        matrices.overwrite_matrices()
+        # matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
-        # matrices.plot_bands_directly()
-        matrices.analyze_dipole(real=False)
-        matrices.analyze_dipole(real=True)
-        matrices.shift_band()
-        # matrices.check_eigval()
-        # sys.exit()
+        matrices.check_eigval()
 
         self.k_list = matrices.k_list
+        for i,k in enumerate(self.k_list):
+            print(la.ishermitian(matrices.H_orth))
+            print(la.ishermitian(matrices.D_orth))
         
-        self.X = matrices.diagonalize_H
-        self.X_inv = matrices.diagonalize_H_dagger
+        self.X_inv = matrices.diagonalize_H
+        self.X = matrices.diagonalize_H_dagger
+        print(self.X)
         self.mat_init = np.zeros((self.num_k, self.m_max, self.m_max), dtype='complex')
-        self.mat_init[:,1,1] = 1 # fully populate valence band
-        self.mat_init[:,0,0] = 1 # fully populate valence band
+        self.mat_init[:,1,1] = 1 # fully populate band
+        self.mat_init[:,0,0] = 1 # fully populate band
         self.mat_init = self.X @ self.mat_init @ self.X_inv
         self.h_const = matrices.H_orth
         self.dipole_mat = matrices.D_orth
@@ -80,7 +79,8 @@ class Simulation:
             transformed_rho = self.X_inv @ rho @ self.X
             dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_max))) @ self.X_inv
         # k_deriv = self.X @ self.get_k_partial(self.X_inv @ rho @ self.X) @ self.X_inv
-        k_deriv = self.get_k_partial(self.X_inv) @ rho @ self.X + self.X_inv @ self.get_k_partial(rho) @ self.X + self.X_inv @ rho @ self.get_k_partial(self.X)
+        # k_deriv = self.get_k_partial(self.X_inv) @ rho @ self.X + self.X_inv @ self.get_k_partial(rho) @ self.X + self.X_inv @ rho @ self.get_k_partial(self.X) # probably wrong
+        k_deriv = self.get_k_partial(rho)
         rhs = 1j*self.commute(rho, t) + E * k_deriv  - dephasing 
         return self.rho_to_y(rhs) 
 
@@ -94,7 +94,7 @@ class Simulation:
         rho_time = solution.y.T # transpose to switch time and other dimensions
         self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])]) # rho(t) in orthogonal basis (not an energy eigenbasis)
         test = self.X_inv @ self.solution @ self.X
-        # print(test[0,:,1,1])
+        # print(test[0,:,0,0])
     
     def y_to_rho(self, y):
         """takes matrix shape and returns flat shape with double the length"""
@@ -243,7 +243,7 @@ class Plot:
         plt.show()
     
     def plot_population(self):
-        rho = self.to_orth_basis @ self.solution @ self.to_H_basis
+        rho = self.X_inv @ self.solution @ self.X
         rho_no_k = np.sum(rho, axis=1)/np.shape(self.k_list)[0]
         for i in range(self.m_max):
             plt.plot(self.time, rho_no_k[:,i,i])
@@ -254,9 +254,9 @@ def gaussian_sine(t, omega, sigma, t_start, E0):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=100, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=100, a=1.32, scale_H=1, m_max=3, T2=10)
+    sim = Simulation(t_end=80, n_steps=10000)
+    sim.define_pulse(sigma=5, lam=740, t_start=40, E0=1e8) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.use_LCAO(num_k=1000, a=7.408, scale_H=0.2, m_max=4, T2=0)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()

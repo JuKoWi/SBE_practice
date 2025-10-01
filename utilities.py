@@ -1,12 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def make_potential_unitcell(atom_pot, n_points, a, scale_H): # a is length of the unit cell, n_points the number of points that will be in each unit cell of the supercell
-    n_wells = 100 
+def make_potential_unitcell(atom_pot, n_points, a): # a is length of the unit cell, n_points the number of points that will be in each unit cell of the supercell
+    n_wells = 1000
     x_space = np.linspace(0, n_wells * a, n_wells * n_points+1) # linspace guarantees even spacing for certain number of points
     V_tot = np.zeros(x_space.shape)
     for i in range(n_wells):
-        V_tot += scale_H**2 * atom_pot(x_space - i * a)
+        V_tot += atom_pot(x_space - i * a)
     # plt.plot(x_space, V_tot)
     # plt.show()
     unit_start = int(n_wells * n_points * 0.5) # first ...
@@ -14,6 +14,8 @@ def make_potential_unitcell(atom_pot, n_points, a, scale_H): # a is length of th
     V_unit = V_tot[unit_start : unit_stop + 1] # second index is inclusive
     # V_unit += -np.max(V_unit)
     x_space = x_space[unit_start : unit_stop + 1] - x_space[unit_start]
+    # plt.plot(x_space, V_unit)
+    # plt.show()
     return x_space, V_unit # returns arrays where first and last elements correspond to lattice points
 
 def make_supercell(x_space, V_unit, n_super):
@@ -26,8 +28,23 @@ def make_supercell(x_space, V_unit, n_super):
     # plt.show()
     return long_space, long_V # returns array where the last point is not symmetry equivalent to first point
 
-def poeschl_teller(xs, lam=5, a=1):
-    return -lam * (lam + 1) * a**2 / (2 * np.cosh(a * xs) ** 2)
+# def poeschl_teller(xs, lam=5, a=1):
+#     return -lam * (lam + 1) * a**2 / (2 * np.cosh(a * xs) ** 2)
+
+# def poeschl_teller(xs, lam=5, a=1):
+#     z = a * xs
+#     ez = np.exp(-2 * np.abs(z))           # always ≤ 1
+#     sech2 = 4 * ez / (1 + ez) ** 2        # stable sech^2
+#     return -lam * (lam + 1) * a**2 / 2 * sech2
+
+def poeschl_teller(xs, lam=5, a=1, cutoff=200):
+    z = a * xs
+    result = np.zeros_like(z, dtype=float)
+    # only evaluate cosh where safe
+    mask = np.abs(z) < cutoff
+    if np.any(mask):
+        result[mask] = -lam * (lam + 1) * a**2 / (2 * np.cosh(z[mask])**2)
+    return result
 
 def inner_prod(psi1, psi2, x_space):
     h = x_space[1]- x_space[0]
