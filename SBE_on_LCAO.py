@@ -21,12 +21,12 @@ class Simulation:
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_center=t_center, E0=E0)
 
     def use_LCAO(self, num_k, a, scale_H, m_max, T2=0):
-        self.m_max = m_max
         self.T2 = fs_to_au(T2)
         self.a = angstrom_to_bohr(a)
         self.num_k = num_k
         
-        matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=self.m_max, scale_H=scale_H)
+        matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=m_max, scale_H=scale_H)
+        self.m_basis = matrices.m_basis
         matrices.get_interals()
         matrices.get_H_blocks()
         matrices.get_S_blocks()
@@ -35,13 +35,13 @@ class Simulation:
         matrices.get_D_orth()
         matrices.get_H_orth()
         matrices.get_diagonalize_H()
-        # matrices.check_eigval()
+        matrices.check_eigval()
 
         self.k_list = matrices.k_list
         
         self.X = matrices.diagonalize_H
         self.X_inv = matrices.diagonalize_H_dagger
-        self.mat_init = np.zeros((self.num_k, self.m_max, self.m_max), dtype='complex')
+        self.mat_init = np.zeros((self.num_k, self.m_basis, self.m_basis), dtype='complex')
         self.mat_init[:,1,1] = 1 # fully populate band
         self.mat_init[:,0,0] = 1 # fully populate band
         self.mat_init = self.X @ self.mat_init @ self.X_inv
@@ -72,7 +72,7 @@ class Simulation:
         dephasing = 0
         if self.T2 != 0:
             transformed_rho = self.X_inv @ rho @ self.X
-            dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_max))) @ self.X_inv
+            dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_basis))) @ self.X_inv
         k_deriv = self.get_k_partial(rho)
         rhs = 1j*self.commute(rho, t) + E * k_deriv  - dephasing 
         return self.rho_to_y(rhs) 
@@ -170,7 +170,7 @@ class Field:
 class Plot:
 
     def __init__(self, simulation):
-        self.m_max = simulation.m_max
+        self.m_basis = simulation.m_basis
         self.time = simulation.time
         self.solution = simulation.solution
         self.k_list = simulation.k_list
@@ -181,13 +181,13 @@ class Plot:
     
     def get_heatmap_rho(self):
         rho = np.abs(self.X_inv @ self.solution @ self.X)
-        fig, axs = plt.subplots(self.m_max+1,1, figsize=(8,4), sharex=True)
-        for i in range(self.m_max):
+        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(8,4), sharex=True)
+        for i in range(self.m_basis):
             im = axs[i].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,i,i].T, shading='auto')
             fig.colorbar(im, ax=axs[i], orientation='horizontal')
-        axs[self.m_max].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
-        axs[self.m_max].set_xlabel('t / fs')
-        axs[self.m_max].set_ylabel(r'E / V $m^{-1}$')
+        axs[self.m_basis].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
+        axs[self.m_basis].set_xlabel('t / fs')
+        axs[self.m_basis].set_ylabel(r'E / V $m^{-1}$')
         plt.show()
     
     def plot_field_E(self):
@@ -225,7 +225,7 @@ class Plot:
     def plot_bands(self):
         H = self.simulation.h_const
         k_list = self.simulation.k_list
-        bands = np.zeros((self.simulation.num_k, self.m_max))
+        bands = np.zeros((self.simulation.num_k, self.m_basis))
         for i,k in enumerate(k_list):
             eigval, eigvec = la.eigh(H[i])
             bands[i] = eigval
@@ -237,7 +237,7 @@ class Plot:
     def plot_population(self):
         rho = self.X_inv @ self.solution @ self.X
         rho_no_k = np.sum(rho, axis=1)/np.shape(self.k_list)[0]
-        for i in range(self.m_max):
+        for i in range(self.m_basis):
             plt.plot(self.time, rho_no_k[:,i,i])
         plt.show()
 

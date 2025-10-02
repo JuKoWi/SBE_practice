@@ -1,12 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def make_potential_unitcell(atom_pot, n_points, a): # a is length of the unit cell, n_points the number of points that will be in each unit cell of the supercell
+def make_potential_unitcell(n_points, a, shift, scaleH, scale2): # a is length of the unit cell, n_points the number of points that will be in each unit cell of the supercell
     n_wells = 1000
     x_space = np.linspace(0, n_wells * a, n_wells * n_points+1) # linspace guarantees even spacing for certain number of points
     V_tot = np.zeros(x_space.shape)
     for i in range(n_wells):
-        V_tot += atom_pot(x_space - i * a)
+        V_tot += poeschl_teller(x_space - i * a, lam=5, a=scaleH) + poeschl_teller(x_space - i *a + shift*a, lam=5, a=scale2)
     # plt.plot(x_space, V_tot)
     # plt.show()
     unit_start = int(n_wells * n_points * 0.5) # first ...
@@ -24,8 +24,8 @@ def make_supercell(x_space, V_unit, n_super):
     long_space = np.linspace(-max*n_super, max*n_super, n_points*n_super*2, endpoint=False)# dont repeat endpoint
     V_unit = V_unit[:-1]
     long_V = np.tile(V_unit, reps=n_super*2)
-    # plt.plot(long_space, long_V)
-    # plt.show()
+    plt.plot(long_space, long_V)
+    plt.show()
     return long_space, long_V # returns array where the last point is not symmetry equivalent to first point
 
 # def poeschl_teller(xs, lam=5, a=1):

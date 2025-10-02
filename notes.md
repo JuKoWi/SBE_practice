@@ -1,4 +1,0 @@
-- works for two level system
-- works for two level system with dephasing
-- works for non-diagonal two level system with dephasing
-- works for diagonal three level system
