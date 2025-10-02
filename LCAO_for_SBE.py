@@ -28,6 +28,7 @@ class LCAOMatrices:
     def get_interals(self):
         self.integrals = LCAOAtomIntegrals(a=self.a, n_points=self.n_points, m_max=self.m_max, scale_H=self.scale_H, cached_int=self.cached_int)
         self.integrals.get_atom_func()
+        print('CALCULATE 2C INTEGRALS')
         self.integrals.create_potential()
         self.integrals.calc_S_mat()
         self.integrals.calc_H_mat()
@@ -50,7 +51,6 @@ class LCAOMatrices:
         for i,k in enumerate(self.k_list):
             S = self._make_k_block(k=k, mat=self.integrals.S_mat)
             self.S_blocks[i] = S
-            # print(ishermitian(S, atol=1e-14))
 
     def custom_S_blocks(self, k_list):
         """get S for another k-grid"""
@@ -65,15 +65,12 @@ class LCAOMatrices:
         for i,k in enumerate(self.k_list):
             H = self._make_k_block(k=k, mat=self.integrals.H_mat)
             self.H_blocks[i] = H
-            # print(ishermitian(H, atol=1e-13))
 
     def get_nablak_blocks(self):
         self.nablak_blocks = np.zeros((self.n_blocks, self.m_max, self.m_max), dtype='complex')
         for i,k in enumerate(self.k_list):
             R = self._make_k_block(k=k, mat=self.integrals.R_mat) # prefactor of 1/N?
             self.nablak_blocks[i] = R
-            # print(R)
-            # print(ishermitian(R, atol=1e-13))
 
     def get_transform_S(self):
         """get S^{-1/2}"""
@@ -88,18 +85,8 @@ class LCAOMatrices:
             U_dagger[i] = eigvec.conj().T
             inv_sqrt_eigval = np.diag(1/np.sqrt(eigval))
             diag_minus_half[i] = inv_sqrt_eigval
-            # print(np.allclose(np.transpose(unitary[i].conj(), axes=(1,0))@ unitary[i], np.eye(self.m_max), atol=1e-12))
-        # test = np.einsum('kab, kbc -> kac', unitary, U_dagger)
-        # print(test)
-        # UDUdagger = np.einsum('kab, kbc, kcd -> kad', unitary, diag, U_dagger)
-        # print(np.allclose(UDUdagger, self.S_blocks))
-        # plt.plot(self.k_list, diag[:,1,1])
-        # plt.plot(self.k_list, diag[:,0,0])
-        # plt.show()
         self.S_minus_half = np.einsum('kab, kbc, kcd -> kad', unitary, diag_minus_half, U_dagger) 
-        # print(self.S_minus_half[30])
-        # print(f"S-12 * S-12 * S = 1 {np.allclose(np.eye(self.m_max),np.einsum('kab, kbc, kcd -> kad', self.S_minus_half, self.S_minus_half, self.S_blocks))}") 
-    
+
     def calc_k_partial(self, block_mat):
         xplush = np.roll(block_mat, shift=-1, axis=0)
         xminush = np.roll(block_mat, shift=1, axis=0)
@@ -110,14 +97,20 @@ class LCAOMatrices:
         return deriv
     
     def fine_S_partial(self):
-        h = (self.k_list[1] - self.k_list[0]) /100
+        h = (self.k_list[1] - self.k_list[0]) /1000
         klist_plus = self.k_list + h
         klist_minus = self.k_list -h
         S_plus = self.custom_S_blocks(k_list=klist_plus)
         S_minus = self.custom_S_blocks(k_list=klist_minus)
         S_half_plus = self.get_transform_S_fine(k_list=klist_plus, S_blocks=S_plus) 
         S_half_minus = self.get_transform_S_fine(k_list=klist_minus, S_blocks=S_minus)
-        deriv = (S_half_plus - S_half_minus) / (2*h)
+        klist_2plus = self.k_list + 2*h
+        klist_2minus = self.k_list -2*h
+        S_2plus = self.custom_S_blocks(k_list=klist_2plus)
+        S_2minus = self.custom_S_blocks(k_list=klist_2minus)
+        S_half_2plus = self.get_transform_S_fine(k_list=klist_2plus, S_blocks=S_2plus) 
+        S_half_2minus = self.get_transform_S_fine(k_list=klist_2minus, S_blocks=S_2minus)
+        deriv = (8* S_half_plus - 8 * S_half_minus + S_half_2minus - S_half_2plus)/(12 * h)
         return deriv
 
     def get_transform_S_fine(self, k_list, S_blocks):
@@ -139,23 +132,15 @@ class LCAOMatrices:
     def get_D_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
-        # for i,k in enumerate(self.k_list):
-        #     print(ishermitian(S_half[i]))
-        #     print(S_half[i] @ S_half_adj[i])
         self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.fine_S_partial() + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
-        # self.D_orth = 0.5* (np.transpose(self.D_orth, axes=(0,2,1)).conj() + self.D_orth) #make hermitian manually
+        # self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) # k-derivative calculated on k_list-grid
+        self.D_orth = 0.5* (np.transpose(self.D_orth, axes=(0,2,1)).conj() + self.D_orth) #make hermitian manually
         A = S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half)
         B = S_half_adj @ self.nablak_blocks @ S_half 
-        # print(self.D_orth[40])
-        # print(A[40])
-        # print(B[40])
-        # for i,k in enumerate(self.k_list):
-        #     print(ishermitian(self.D_orth[i], atol=1e-8))
 
     def get_H_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
-        # print(self.H_blocks)
         self.H_orth = S_half_adj @ self.H_blocks @ S_half 
         self.H_orth = 0.5* (np.transpose(self.H_orth, axes=(0,2,1)).conj() + self.H_orth)
         # for i,k in enumerate(self.k_list):
@@ -164,10 +149,8 @@ class LCAOMatrices:
     def get_diagonalize_H(self):
         unitary = np.zeros_like(self.H_orth)
         unitary_dagger = np.zeros_like(self.H_orth)
-        for i, k in enumerate(self.k_list):
-            eigval, eigvec = eigh(self.H_orth[i]) # doublecheck, if transpose of U necessary
-            unitary[i] = eigvec
-            unitary_dagger[i] = eigvec.conj().T
+        eigval, unitary= eigh(self.H_orth)
+        unitary_dagger = np.transpose(unitary, axes=(0,2,1)).conj()
         self.diagonalize_H = unitary
         self.diagonalize_H_dagger = unitary_dagger
     
@@ -282,7 +265,7 @@ class LCAOAtomIntegrals:
         print('CALCULATE ATOM ORBITAL ENERGIES')
         def create_wf(k, gerade, V, Etry=-1):
             u, E, dE, n_nodes = solve_schroedinger(V, k=k, gerade=gerade, h=h, Etry=Etry)
-            print(E)
+            # print(E)
             psi0 = symmetric(u, gerade=gerade)
             psi0 /= np.sqrt(np.trapezoid(psi0 * psi0, dx=h))
             return psi0
@@ -341,8 +324,8 @@ class LCAOAtomIntegrals:
             for m in range(self.m_max):
                 for n in range(self.m_max):
                     self.H_mat[i, m, n] = self._two_center_int(m=m, n=n, R=R, operator=lambda x: self._hamiltonian(x))
-            if R == 0:
-                print(self.H_mat[i])
+            # if R == 0:
+                # print(self.H_mat[i])
 
     def _two_center_int(self, m, n, R, operator=lambda x: x): # does not converge to machine precision 0 for large distances
         x = self.x_space
@@ -391,5 +374,6 @@ if __name__ == "__main__":
     matrices.get_D_orth()
     matrices.get_H_orth()
     matrices.plot_bands_directly()
-    # matrices.matrix_plot(mat_blocks=matrices.D_orth)
+    matrices.matrix_plot(mat_blocks=matrices.D_orth)
+    matrices.matrix_plot(mat_blocks=matrices.H_orth)
     # matrices.check_eigval()

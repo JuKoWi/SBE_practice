@@ -16,9 +16,9 @@ class Simulation:
         self.n_steps = n_steps
         self.solution = None
 
-    def define_pulse(self, sigma, lam, t_start, E0):
+    def define_pulse(self, sigma, lam, t_center, E0):
         """sigma and t_start in fs, E0 in V/m, lam in nm"""
-        self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_start=t_start, E0=E0)
+        self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_center=t_center, E0=E0)
 
     def use_LCAO(self, num_k, a, scale_H, m_max, T2=0):
         self.m_max = m_max
@@ -26,7 +26,7 @@ class Simulation:
         self.a = angstrom_to_bohr(a)
         self.num_k = num_k
         
-        matrices = LCAOMatrices(a=self.a, n_points=100, num_k=num_k, m_max=self.m_max, scale_H=scale_H)
+        matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=self.m_max, scale_H=scale_H)
         matrices.get_interals()
         matrices.get_H_blocks()
         matrices.get_S_blocks()
@@ -34,18 +34,13 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
-        # matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
-        matrices.check_eigval()
+        # matrices.check_eigval()
 
         self.k_list = matrices.k_list
-        for i,k in enumerate(self.k_list):
-            print(la.ishermitian(matrices.H_orth))
-            print(la.ishermitian(matrices.D_orth))
         
-        self.X_inv = matrices.diagonalize_H
-        self.X = matrices.diagonalize_H_dagger
-        print(self.X)
+        self.X = matrices.diagonalize_H
+        self.X_inv = matrices.diagonalize_H_dagger
         self.mat_init = np.zeros((self.num_k, self.m_max, self.m_max), dtype='complex')
         self.mat_init[:,1,1] = 1 # fully populate band
         self.mat_init[:,0,0] = 1 # fully populate band
@@ -78,8 +73,6 @@ class Simulation:
         if self.T2 != 0:
             transformed_rho = self.X_inv @ rho @ self.X
             dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_max))) @ self.X_inv
-        # k_deriv = self.X @ self.get_k_partial(self.X_inv @ rho @ self.X) @ self.X_inv
-        # k_deriv = self.get_k_partial(self.X_inv) @ rho @ self.X + self.X_inv @ self.get_k_partial(rho) @ self.X + self.X_inv @ rho @ self.get_k_partial(self.X) # probably wrong
         k_deriv = self.get_k_partial(rho)
         rhs = 1j*self.commute(rho, t) + E * k_deriv  - dephasing 
         return self.rho_to_y(rhs) 
@@ -89,12 +82,10 @@ class Simulation:
         print('start integration')
         solution = solve_ivp(lambda t, y : self.get_rhs(t=t, y=y), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
                             # method='BDF', 
-                            # atol=1e-12, rtol=1e-12,
+                            atol=1e-12, rtol=1e-12, # why does this resolve problems in boundary region?
                             )
         rho_time = solution.y.T # transpose to switch time and other dimensions
         self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])]) # rho(t) in orthogonal basis (not an energy eigenbasis)
-        test = self.X_inv @ self.solution @ self.X
-        # print(test[0,:,0,0])
     
     def y_to_rho(self, y):
         """takes matrix shape and returns flat shape with double the length"""
@@ -151,16 +142,16 @@ class Simulation:
         ax.set_ylabel(r'$\log_{10}(S)$')
         secax = ax.secondary_xaxis('top', functions=(energy_to_harmonic, harmonic_to_energy))
         secax.set_xlabel('Harmonic order')
-        plt.show()
+        plt.show() #TODO auf 1 normieren
         
 
 class Field:
     """must include a method with t as input"""
 
-    def __init__(self, time, sigma, lam, t_start, E0):
+    def __init__(self, time, sigma, lam, t_center, E0):
         """lam in nm, sigma in fs, Enull in V/m"""
         self.time = time
-        self.t_start = fs_to_au(t_start)
+        self.t_center = fs_to_au(t_center)
         self.sigma = fs_to_au(sigma)
         lam = nm_to_au(lam)
         self.omega = lam_to_omega(lam) 
@@ -168,11 +159,11 @@ class Field:
         self.E_field = np.array([self.get_E(t) for t in self.time])
 
     def get_E(self, t):
-        E = gaussian_sine(t, omega=self.omega, sigma=self.sigma, t_start=self.t_start, E0=self.E0)
+        E = gaussian_sine(t, omega=self.omega, sigma=self.sigma, t_center=self.t_center, E0=self.E0)
         return E
 
     def get_vector_potential(self):
-        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_start, self.E0)
+        f = lambda t, y: gaussian_sine(t, self.omega, self.sigma, self.t_center, self.E0)
         solution = solve_ivp(f, (self.time[0], self.time[-1]), [0], t_eval=self.time)
         self.A_field = solution.y[0]
 
@@ -210,6 +201,7 @@ class Plot:
     def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
         ax.plot(au_to_fs(self.time), np.sum(np.abs(self.solution[:,:,1,1]), axis=1)) 
+        ax.set_ylabel(ylabel=r'n_{electrons, total}')
         plt.show()
 
     def plot_field_A(self):
@@ -249,14 +241,14 @@ class Plot:
             plt.plot(self.time, rho_no_k[:,i,i])
         plt.show()
 
-def gaussian_sine(t, omega, sigma, t_start, E0):
-    return -E0 * np.sin(omega * t) * np.exp(-(t- t_start)**2 / (2 * sigma**2))
+def gaussian_sine(t, omega, sigma, t_center, E0):
+    return -E0 * np.sin(omega * t) * np.exp(-(t- t_center)**2 / (2 * sigma**2))
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=80, n_steps=10000)
-    sim.define_pulse(sigma=5, lam=740, t_start=40, E0=1e8) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1000, a=7.408, scale_H=0.2, m_max=4, T2=0)
+    sim = Simulation(t_end=80, n_steps=2000)
+    sim.define_pulse(sigma=5, lam=740, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(14), scale_H=0.2, m_max=4, T2=10)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()

@@ -19,7 +19,7 @@ possible tests:
 
 def check_commutator():
     sim = Simulation(t_end=100, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e10) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.define_pulse(sigma=5, lam=740, t_center=50, E0=1e10) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.use_LCAO(num_k=100, a=1.32, scale_H=1, m_max=4)
     sim.integrate() 
     rho = sim.mat_init
@@ -28,7 +28,7 @@ def check_commutator():
 
 def check_rho_hermitian():
     sim = Simulation(t_end=100, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e10) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.define_pulse(sigma=5, lam=740, t_center=50, E0=1e10) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.use_LCAO(num_k=100, a=1.32, scale_H=1, m_max=4)
     sim.integrate() 
     hermitian_mask = np.vectorize(ishermitian, signature='(i,j)->()')(sim.solution)
@@ -37,7 +37,7 @@ def check_rho_hermitian():
 
 def check_trace_const():
     sim = Simulation(t_end=100, n_steps=5000)
-    sim.define_pulse(sigma=5, lam=740, t_start=50, E0=1e10) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+    sim.define_pulse(sigma=5, lam=740, t_center=50, E0=1e10) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
     sim.use_LCAO(num_k=100, a=1.32, scale_H=1, m_max=4)
     sim.integrate() 
     results = Plot(sim)
