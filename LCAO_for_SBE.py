@@ -304,18 +304,18 @@ class LCAOAtomIntegrals:
             self.atom_func = ao
 
 
-        fig, axs = plt.subplots(2, 1, sharex=False)
+        # fig, axs = plt.subplots(2, 1, sharex=False)
 
-        axs[0].plot(xg, V_plot)
+        # axs[0].plot(xg, V_plot)
 
-        for i,orb in enumerate(ao):
-            axs[1].plot(xg, orb, label=f"psi{i} with E = {orb[1]:.2f}")
+        # for i,orb in enumerate(ao):
+        #     axs[1].plot(xg, orb, label=f"psi{i} with E = {orb[1]:.2f}")
 
-        # axs[0].set_xlim((-5, 5))
-        # axs[1].set_xlim((-6, 6))
+        # # axs[0].set_xlim((-5, 5))
+        # # axs[1].set_xlim((-6, 6))
 
-        plt.legend(loc='upper right')
-        plt.show()
+        # plt.legend(loc='upper right')
+        # plt.show()
 
     def create_potential(self):
         x_u, V_u = make_potential_unitcell(n_points=self.n_points, a=self.a, scaleH=self.scale_H, scale2=self.scale2, shift=self.shift)

@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+import time
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,7 +36,7 @@ class Simulation:
         matrices.get_D_orth()
         matrices.get_H_orth()
         matrices.get_diagonalize_H()
-        matrices.check_eigval()
+        # matrices.check_eigval()
 
         self.k_list = matrices.k_list
         
@@ -80,11 +81,14 @@ class Simulation:
     def integrate(self):
         """needs self.rhs"""
         print('start integration')
+        time_start = time.time()
         solution = solve_ivp(lambda t, y : self.get_rhs(t=t, y=y), t_span=(self.time[0], self.time[-1]), y0=self.rho_to_y(self.mat_init), t_eval=self.time,
                             # method='BDF', 
                             atol=1e-12, rtol=1e-12, # why does this resolve problems in boundary region?
                             )
         rho_time = solution.y.T # transpose to switch time and other dimensions
+        time_end = time.time()
+        print(f'integrating took {time_end - time_start}')
         self.solution = np.array([self.y_to_rho(rho_time[i]) for i in range(rho_time.shape[0])]) # rho(t) in orthogonal basis (not an energy eigenbasis)
     
     def y_to_rho(self, y):
