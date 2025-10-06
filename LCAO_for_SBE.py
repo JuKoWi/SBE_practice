@@ -136,8 +136,8 @@ class LCAOMatrices:
     def get_D_orth(self):
         S_half = self.S_minus_half
         S_half_adj = S_half # is self adjoint 
-        self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.fine_S_partial() + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
-        # self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) # k-derivative calculated on k_list-grid
+        # self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.fine_S_partial() + S_half_adj @ self.nablak_blocks @ S_half ) #d_mn = i<u_mk|nabla k |u_nk>
+        self.D_orth = 1j*(S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half) + S_half_adj @ self.nablak_blocks @ S_half ) # k-derivative calculated on k_list-grid
         self.D_orth = 0.5* (np.transpose(self.D_orth, axes=(0,2,1)).conj() + self.D_orth) #make hermitian manually
         A = S_half_adj @ self.S_blocks @ self.calc_k_partial(S_half)
         B = S_half_adj @ self.nablak_blocks @ S_half 
@@ -261,7 +261,7 @@ class LCAOAtomIntegrals:
 
     def get_atom_func(self):
         N_single = 10000  # Number of grid points
-        xmax_single = 30 # Extent of the grid
+        xmax_single = 70 # Extent of the grid
         lam = 5
         xg = np.linspace(0, xmax_single, N_single)
         h = xg[1] - xg[0]
@@ -271,7 +271,7 @@ class LCAOAtomIntegrals:
         print('CALCULATE ATOM ORBITAL ENERGIES')
         def create_wf(k, gerade, V, Etry=-1):
             u, E, dE, n_nodes = solve_schroedinger(V, k=k, gerade=gerade, h=h, Etry=Etry)
-            # print(E)
+            print(E)
             psi0 = symmetric(u, gerade=gerade)
             psi0 /= np.sqrt(np.trapezoid(psi0 * psi0, dx=h))
             return psi0
@@ -349,9 +349,10 @@ class LCAOAtomIntegrals:
         x = self.x_space
         psi1 = self.shifted_function(R=R, m=m, a=self.a, x=x) # rewrite to avoid loading same funciton from file in every iteration of for loop
         psi2 = operator(self.shifted_function(R=0, m=n, a=self.a, x=x)) 
-        # plt.plot(self.x_space, psi1)
-        # plt.plot(self.x_space, psi2)
-        # plt.show()
+        # if R == 0:
+        #     plt.plot(self.x_space, psi1)
+        #     plt.plot(self.x_space, psi2)
+        #     plt.show()
         return inner_prod(psi1, psi2, x) 
 
     def _hamiltonian(self, psi):
@@ -381,7 +382,7 @@ class LCAOAtomIntegrals:
         return psi_shift
 
 if __name__ == "__main__":
-    matrices = LCAOMatrices(a=20, n_points=1000, num_k=1000, m_max=4, scale_H=1, shift=0.4, scale2=0.9) #good parameters: a=2.2, 2.3; 2.4; , scale_H=0.7; => 1.08 eV;1.5 eV; 4eV
+    matrices = LCAOMatrices(a=28, n_points=1000, num_k=1000, m_max=4, scale_H=0.21, shift=0.4, scale2=0.19) #good parameters: a=2.2, 2.3; 2.4; , scale_H=0.7; => 1.08 eV;1.5 eV; 4eV
     matrices.get_interals()
     matrices.get_H_blocks()
     matrices.get_S_blocks()

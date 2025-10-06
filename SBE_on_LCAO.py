@@ -20,12 +20,12 @@ class Simulation:
         """sigma and t_start in fs, E0 in V/m, lam in nm"""
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_center=t_center, E0=E0)
 
-    def use_LCAO(self, num_k, a, scale_H, m_max, T2=0):
+    def use_LCAO(self, num_k, a, scale_H, m_max, shift, scale2, vb_index, T2=0):
         self.T2 = fs_to_au(T2)
         self.a = angstrom_to_bohr(a)
         self.num_k = num_k
         
-        matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=m_max, scale_H=scale_H)
+        matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=m_max, scale_H=scale_H, shift=shift, scale2=scale2)
         self.m_basis = matrices.m_basis
         matrices.get_interals()
         matrices.get_H_blocks()
@@ -42,8 +42,8 @@ class Simulation:
         self.X = matrices.diagonalize_H
         self.X_inv = matrices.diagonalize_H_dagger
         self.mat_init = np.zeros((self.num_k, self.m_basis, self.m_basis), dtype='complex')
-        self.mat_init[:,1,1] = 1 # fully populate band
-        self.mat_init[:,0,0] = 1 # fully populate band
+        for i in range(vb_index):
+            self.mat_init[:,i,i] = 1 # fully populate band
         self.mat_init = self.X @ self.mat_init @ self.X_inv
         self.h_const = matrices.H_orth
         self.dipole_mat = matrices.D_orth
@@ -248,7 +248,7 @@ def gaussian_sine(t, omega, sigma, t_center, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=80, n_steps=2000)
     sim.define_pulse(sigma=5, lam=740, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(14), scale_H=0.2, m_max=4, T2=10)
+    sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, T2=5, shift=0.4, scale2=0.19, vb_index=2)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()

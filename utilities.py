@@ -24,8 +24,8 @@ def make_supercell(x_space, V_unit, n_super):
     long_space = np.linspace(-max*n_super, max*n_super, n_points*n_super*2, endpoint=False)# dont repeat endpoint
     V_unit = V_unit[:-1]
     long_V = np.tile(V_unit, reps=n_super*2)
-    plt.plot(long_space, long_V)
-    plt.show()
+    # plt.plot(long_space, long_V)
+    # plt.show()
     return long_space, long_V # returns array where the last point is not symmetry equivalent to first point
 
 # def poeschl_teller(xs, lam=5, a=1):
