@@ -75,7 +75,7 @@ class Simulation:
             transformed_rho = self.X_inv @ rho @ self.X
             dephasing = self.X @ ((1/self.T2) * (transformed_rho - transformed_rho * np.eye(self.m_basis))) @ self.X_inv
         k_deriv = self.get_k_partial(rho)
-        rhs = 1j*self.commute(rho, t) + E * k_deriv  - dephasing 
+        rhs = -1j*self.commute(rho, t) + E * k_deriv  - dephasing 
         return self.rho_to_y(rhs) 
 
     def integrate(self):

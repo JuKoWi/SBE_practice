@@ -91,7 +91,7 @@ class Simulation:
         dephasing = 0
         if self.T2 != 0:
             dephasing = (1/self.T2) * (rho - rho * np.eye(2))
-        rhs = 1j*self.commute(rho, t) + E * self.get_k_partial(rho) - dephasing 
+        rhs = -1j*self.commute(rho, t) + E * self.get_k_partial(rho) - dephasing 
         return self.rho_to_y(rhs) 
 
     def integrate(self):
