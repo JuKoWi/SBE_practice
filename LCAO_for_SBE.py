@@ -7,6 +7,7 @@ from utilities import make_potential_unitcell, make_supercell, poeschl_teller, i
 import os
 from scipy.linalg import eigh, ishermitian
 from unit_conversion import Cm_to_au, eV_to_au
+import scipy.constants as const
 from numerov import solve_schroedinger, symmetric
 
 
@@ -184,15 +185,21 @@ class LCAOMatrices:
             bands[i] = eig2
             # print(np.isclose(eig1, eig2, rtol=1e-10))
         bands = bands.T
+        k_angstrom = self.k_list/const.physical_constants['atomic unit of length'][0]* const.angstrom
+        bands_eV = bands * const.physical_constants['Hartree energy in eV'][0]
+        plt.figure(figsize=(9, 6))
         for m in range(self.m_basis):
-            plt.plot(self.k_list, bands[m])
+            plt.plot(k_angstrom, bands_eV[m])
+        plt.xlabel(r"k / $\AA^{-1}$")
+        plt.ylabel(r"E / eV")
+        plt.savefig('construted_band_structure.png')
         plt.show()
     
     def overwrite_matrices(self):
-        self.D_orth = np.zeros_like(self.D_orth)
-        self.H_orth = np.zeros_like(self.H_orth)
+        self.D_orth = np.zeros((self.num_k, self.m_basis, self.m_basis))
+        self.H_orth = np.zeros((self.num_k, self.m_basis, self.m_basis))
         Ec = eV_to_au(4)
-        Ev = eV_to_au(-3)
+        Ev = eV_to_au(-1.5)
         tc = eV_to_au(-1.5)
         tv = eV_to_au(0.5)
         for i,k in enumerate(self.k_list):
@@ -205,18 +212,18 @@ class LCAOMatrices:
             # self.D_orth[i,2,1] = Cm_to_au(9e-29)
             # self.D_orth[i,2,0] = Cm_to_au(9e-29)
             # self.D_orth[i,1,2] = Cm_to_au(9e-29)
-        unitary = np.zeros((self.num_k, self.m_basis, self.m_basis))
-        for i, k in enumerate(self.k_list):
-            theta = np.sin(self.a * k)
-            unitary[i, 0,0] = np.cos(theta)
-            unitary[i,0,1] = -np.sin(theta)
-            unitary[i,1,0] = np.sin(theta)
-            unitary[i,1,1] = np.cos(theta)
+        # unitary = np.zeros((self.num_k, self.m_basis, self.m_basis))
+        # for i, k in enumerate(self.k_list):
+        #     theta = np.sin(self.a * k)
+        #     unitary[i, 0,0] = np.cos(theta)
+        #     unitary[i,0,1] = -np.sin(theta)
+        #     unitary[i,1,0] = np.sin(theta)
+        #     unitary[i,1,1] = np.cos(theta)
             # unitary[i,2,2] = 1
         # print(unitary)
         # print(np.transpose(unitary, axes=(0,2,1)))
-        self.D_orth = np.transpose(unitary, axes=(0,2,1)) @ self.D_orth @ unitary
-        self.H_orth = np.transpose(unitary, axes=(0,2,1)) @ self.H_orth @ unitary
+        # self.D_orth = np.transpose(unitary, axes=(0,2,1)) @ self.D_orth @ unitary
+        # self.H_orth = np.transpose(unitary, axes=(0,2,1)) @ self.H_orth @ unitary
     
     def plot_bands_directly(self):
         bands = np.zeros((self.num_k, self.m_basis))
@@ -240,10 +247,6 @@ class LCAOMatrices:
         plt.legend()
         plt.show()
 
-    def shift_band(self):
-        D = self.diagonalize_H_dagger @ self.H_orth @ self.diagonalize_H
-        D[:,2,2] -= 1.2
-        self.H_orth = self.diagonalize_H @ D @ self.diagonalize_H_dagger
 
 
 

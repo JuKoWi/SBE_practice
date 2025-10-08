@@ -28,15 +28,16 @@ class Simulation:
         
         matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=m_max, scale_H=scale_H, shift=shift, scale2=scale2)
         self.m_basis = matrices.m_basis
-        matrices.get_interals()
-        matrices.get_H_blocks()
-        matrices.get_S_blocks()
-        matrices.get_nablak_blocks()
-        matrices.get_transform_S()
-        matrices.get_D_orth()
-        matrices.get_H_orth()
+        # matrices.get_interals()
+        # matrices.get_H_blocks()
+        # matrices.get_S_blocks()
+        # matrices.get_nablak_blocks()
+        # matrices.get_transform_S()
+        # matrices.get_D_orth()
+        # matrices.get_H_orth()
+        matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
-        # matrices.check_eigval()
+        matrices.check_eigval()
 
         self.k_list = matrices.k_list
         
@@ -141,9 +142,11 @@ class Simulation:
         def harmonic_to_energy(h):
             return h * au_to_ev(self.pulse.omega)
 
-        ax.plot(energy_eV, np.log10(energy_eV**2 * np.abs(result)**2))
-        ax.set_xlabel('E/eV')
-        ax.set_ylabel(r'$\log_{10}(S)$')
+        S = energy_eV**2 * np.abs(result)**2
+        S /= np.max(S)
+        ax.semilogy(energy_eV, S) 
+        ax.set_xlabel('E / eV')
+        ax.set_ylabel('S (normalized)')
         secax = ax.secondary_xaxis('top', functions=(energy_to_harmonic, harmonic_to_energy))
         secax.set_xlabel('Harmonic order')
         plt.show() #TODO auf 1 normieren
@@ -185,13 +188,18 @@ class Plot:
     
     def get_heatmap_rho(self):
         rho = np.abs(self.X_inv @ self.solution @ self.X)
-        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(8,4), sharex=True)
+        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(10,6), sharex=True, constrained_layout=True)
+        k_angstrom = self.k_list/constants.physical_constants['atomic unit of length'][0] * constants.angstrom
+        time_fs = au_to_fs(self.time)
         for i in range(self.m_basis):
-            im = axs[i].pcolormesh(au_to_fs(self.time), self.k_list, rho[:,:,i,i].T, shading='auto')
-            fig.colorbar(im, ax=axs[i], orientation='horizontal')
-        axs[self.m_basis].plot(au_to_fs(self.time), au_to_Vpm(self.E_field))
+            im = axs[self.m_basis- i-1].pcolormesh(time_fs, k_angstrom, rho[:,:,i,i].T, shading='auto')
+            cbar = fig.colorbar(im, ax=axs[self.m_basis - i-1], orientation='vertical')
+            axs[self.m_basis - i-1].set_ylabel(r'k / $\AA^{-1}$')
+            cbar.set_label(rf'$|c_{i}|^2$', loc='center')
+        axs[self.m_basis].plot(au_to_fs(self.time), au_to_Vpm(self.E_field)*1e-9)
         axs[self.m_basis].set_xlabel('t / fs')
-        axs[self.m_basis].set_ylabel(r'E / V $m^{-1}$')
+        axs[self.m_basis].set_ylabel(r'E / V ${nm}^{-1}$')
+        plt.savefig('population_heatmap.png')
         plt.show()
     
     def plot_field_E(self):
@@ -205,7 +213,7 @@ class Plot:
     def plot_density_matrix(self, k_index):
         fig, ax = plt.subplots()
         ax.plot(au_to_fs(self.time), np.sum(np.abs(self.solution[:,:,1,1]), axis=1)) 
-        ax.set_ylabel(ylabel=r'n_{electrons, total}')
+        ax.set_ylabel(ylabel=r'$n_{electrons, total}$')
         plt.show()
 
     def plot_field_A(self):
@@ -252,7 +260,7 @@ def gaussian_sine(t, omega, sigma, t_center, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=80, n_steps=2000)
     sim.define_pulse(sigma=5, lam=740, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, T2=5, shift=0.4, scale2=0.19, vb_index=2)
+    sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()
@@ -261,3 +269,6 @@ if __name__ =="__main__":
     results.plot_current()
     sim.calculate_spectrum()
     results.plot_density_matrix(k_index=0)
+
+
+    # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, T2=5, shift=0.4, scale2=0.19, vb_index=2)

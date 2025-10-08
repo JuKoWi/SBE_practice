@@ -28,6 +28,7 @@ class BandStructure:
         H[0,0] = -self.tc * self.a * np.sin(k * self.a)
         H[1,1] = -self.tv * self.a * np.sin(k * self.a)
         return H
+    
 
 class Simulation:
     """rewrite such that pulse and bands are provided as the respective classes
@@ -247,6 +248,10 @@ class Plot:
         ax.set_xlabel("t / fs")
         ax.set_ylabel("j / A")
         plt.show()
+
+    # def plot_bands(self):
+    #     k_space = self.k_list /constants.physical_constants[0] * constants.angstrom
+
 
     
 
