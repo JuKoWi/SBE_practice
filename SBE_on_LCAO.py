@@ -8,6 +8,7 @@ import scipy.constants as constants
 from unit_conversion import eV_to_au, au_to_ev, angstrom_to_bohr, bohr_to_angstrom, lam_to_omega, nm_to_au, fs_to_au, au_to_fs, au_to_Vpm, Vpm_to_au, Cm_to_au, au_to_A
 from scipy.integrate import solve_ivp
 from LCAO_for_SBE import LCAOAtomIntegrals, LCAOMatrices
+plt.rcParams['savefig.bbox'] = 'tight'
 
 class Simulation:
     def __init__(self, t_end, n_steps):
@@ -125,31 +126,35 @@ class Simulation:
         rho = self.solution
         return np.einsum('tkab,kbc -> tkac', rho, J)
     
-    def calculate_spectrum(self):
+    def calculate_spectrum(self, zoom=None): #TODO fix unit/dimension conversions
         N = self.n_steps
+        dt = self.t_end/N
         omega = np.array([np.exp(-1j * 2 * n *np.pi /N) for n in range(self.n_steps)])
         vandermonde = np.vander(omega, increasing=True).T
-        result = vandermonde @ self.current
+        result = (dt / np.sqrt(2 * np.pi)) * vandermonde @ self.current
         ang_freq = 2 * np.pi * np.arange((self.n_steps)) / self.t_end
+        ang_freq = ang_freq[:len(ang_freq)//2]
         energy_eV = au_to_ev(ang_freq)
-        energy_eV = energy_eV[:len(energy_eV)//2]
         result = result[:len(result)//2]
 
-        fix, ax = plt.subplots()
+        fix, ax = plt.subplots(figsize=(16,9))
         def energy_to_harmonic(E):
             return E / au_to_ev(self.pulse.omega)
         
         def harmonic_to_energy(h):
             return h * au_to_ev(self.pulse.omega)
 
-        S = energy_eV**2 * np.abs(result)**2
+        S = ang_freq**2 * np.abs(result)**2
         S /= np.max(S)
         ax.semilogy(energy_eV, S) 
         ax.set_xlabel('E / eV')
         ax.set_ylabel('S (normalized)')
         secax = ax.secondary_xaxis('top', functions=(energy_to_harmonic, harmonic_to_energy))
         secax.set_xlabel('Harmonic order')
-        plt.show() #TODO auf 1 normieren
+        if zoom != None:
+            ax.set_xlim(0,zoom)
+        plt.savefig('hhg_spectrum.png')
+        plt.show() 
         
 
 class Field:
@@ -188,7 +193,7 @@ class Plot:
     
     def get_heatmap_rho(self):
         rho = np.abs(self.X_inv @ self.solution @ self.X)
-        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(10,6), sharex=True, constrained_layout=True)
+        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(15,6.3), sharex=True, constrained_layout=True)
         k_angstrom = self.k_list/constants.physical_constants['atomic unit of length'][0] * constants.angstrom
         time_fs = au_to_fs(self.time)
         for i in range(self.m_basis):
@@ -260,14 +265,14 @@ def gaussian_sine(t, omega, sigma, t_center, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=80, n_steps=2000)
     sim.define_pulse(sigma=5, lam=740, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1)
+    sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=0, shift=0, scale2=0.19, vb_index=1)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()
     sim.get_current()
     results = Plot(sim)
     results.plot_current()
-    sim.calculate_spectrum()
+    sim.calculate_spectrum(zoom=20)
     results.plot_density_matrix(k_index=0)
 
 

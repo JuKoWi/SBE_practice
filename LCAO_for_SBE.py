@@ -9,6 +9,7 @@ from scipy.linalg import eigh, ishermitian
 from unit_conversion import Cm_to_au, eV_to_au
 import scipy.constants as const
 from numerov import solve_schroedinger, symmetric
+plt.rcParams['savefig.bbox'] = 'tight'
 
 
 
