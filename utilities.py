@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.constants as constants
 
 def make_potential_unitcell(n_points, a, shift, scaleH, scale2): # a is length of the unit cell, n_points the number of points that will be in each unit cell of the supercell
     n_wells = 1000
@@ -24,9 +25,14 @@ def make_supercell(x_space, V_unit, n_super):
     long_space = np.linspace(-max*n_super, max*n_super, n_points*n_super*2, endpoint=False)# dont repeat endpoint
     V_unit = V_unit[:-1]
     long_V = np.tile(V_unit, reps=n_super*2)
-    # plt.plot(long_space, long_V)
-    # plt.show()
+    V_eV = long_V * constants.physical_constants['Hartree energy in eV'][0]
+    x_angstrom = long_space * constants.physical_constants['atomic unit of length'][0] /constants.angstrom
+    plt.plot(x_angstrom, V_eV)
+    plt.xlabel(r'x / $\AA$')
+    plt.ylabel(r'V / eV')
+    plt.savefig('potential_supercell.png')
     return long_space, long_V # returns array where the last point is not symmetry equivalent to first point
+
 
 # def poeschl_teller(xs, lam=5, a=1):
 #     return -lam * (lam + 1) * a**2 / (2 * np.cosh(a * xs) ** 2)

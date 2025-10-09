@@ -22,21 +22,22 @@ class Simulation:
         """sigma and t_start in fs, E0 in V/m, lam in nm"""
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_center=t_center, E0=E0)
 
-    def use_LCAO(self, num_k, a, scale_H, m_max, shift, scale2, vb_index, T2=0):
+    def use_LCAO(self, num_k, a, scale_H, m_max, scale2, vb_index, shift=0, T2=0):
+        plt.savefig('potential_supercell.png')
         self.T2 = fs_to_au(T2)
         self.a = angstrom_to_bohr(a)
         self.num_k = num_k
         
         matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=m_max, scale_H=scale_H, shift=shift, scale2=scale2)
         self.m_basis = matrices.m_basis
-        # matrices.get_interals()
-        # matrices.get_H_blocks()
-        # matrices.get_S_blocks()
-        # matrices.get_nablak_blocks()
-        # matrices.get_transform_S()
-        # matrices.get_D_orth()
-        # matrices.get_H_orth()
-        matrices.overwrite_matrices()
+        matrices.get_interals()
+        matrices.get_H_blocks()
+        matrices.get_S_blocks()
+        matrices.get_nablak_blocks()
+        matrices.get_transform_S()
+        matrices.get_D_orth()
+        matrices.get_H_orth()
+        # matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
         matrices.check_eigval()
 
@@ -137,7 +138,7 @@ class Simulation:
         energy_eV = au_to_ev(ang_freq)
         result = result[:len(result)//2]
 
-        fix, ax = plt.subplots(figsize=(16,9))
+        fix, ax = plt.subplots(figsize=(9,6))
         def energy_to_harmonic(E):
             return E / au_to_ev(self.pulse.omega)
         
@@ -193,7 +194,7 @@ class Plot:
     
     def get_heatmap_rho(self):
         rho = np.abs(self.X_inv @ self.solution @ self.X)
-        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(15,6.3), sharex=True, constrained_layout=True)
+        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(19,9), sharex=True, constrained_layout=True)
         k_angstrom = self.k_list/constants.physical_constants['atomic unit of length'][0] * constants.angstrom
         time_fs = au_to_fs(self.time)
         for i in range(self.m_basis):
@@ -265,7 +266,7 @@ def gaussian_sine(t, omega, sigma, t_center, E0):
 if __name__ =="__main__":
     sim = Simulation(t_end=80, n_steps=2000)
     sim.define_pulse(sigma=5, lam=740, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=0, shift=0, scale2=0.19, vb_index=1)
+    sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, scale2=0.19, shift=0.4, T2=5, vb_index=2)
     sim.integrate() 
     results = Plot(sim)
     results.get_heatmap_rho()
@@ -276,4 +277,5 @@ if __name__ =="__main__":
     results.plot_density_matrix(k_index=0)
 
 
-    # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, T2=5, shift=0.4, scale2=0.19, vb_index=2)
+    # sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1)
+    # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(13), scale_H=0.19, m_max=4, T2=5, scale2=0.19, vb_index=2)
