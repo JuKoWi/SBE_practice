@@ -10,6 +10,7 @@ from unit_conversion import Cm_to_au, eV_to_au
 import scipy.constants as const
 from numerov import solve_schroedinger, symmetric
 plt.rcParams['savefig.bbox'] = 'tight'
+plt.rcParams.update({'font.size':19})
 
 
 
@@ -188,7 +189,7 @@ class LCAOMatrices:
         bands = bands.T
         k_angstrom = self.k_list/const.physical_constants['atomic unit of length'][0]* const.angstrom
         bands_eV = bands * const.physical_constants['Hartree energy in eV'][0]
-        print(f'Eg = {np.min(bands_eV[2] - bands_eV[1])}')
+        print(f'Eg = {np.min(bands_eV[1] - bands_eV[0])}')
         plt.figure(figsize=(9, 6))
         for m in range(self.m_basis):
             plt.plot(k_angstrom, bands_eV[m])

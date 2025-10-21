@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 import time
+import pickle
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +10,8 @@ from unit_conversion import eV_to_au, au_to_ev, angstrom_to_bohr, bohr_to_angstr
 from scipy.integrate import solve_ivp
 from LCAO_for_SBE import LCAOAtomIntegrals, LCAOMatrices
 plt.rcParams['savefig.bbox'] = 'tight'
+plt.rcParams.update({'font.size':19})
+from matplotlib.ticker import MaxNLocator
 
 class Simulation:
     def __init__(self, t_end, n_steps):
@@ -29,7 +32,7 @@ class Simulation:
         self.num_k = num_k
         
         matrices = LCAOMatrices(a=self.a, n_points=1000, num_k=num_k, m_max=m_max, scale_H=scale_H, shift=shift, scale2=scale2)
-        self.m_basis = matrices.m_basis
+        self.m_basis = matrices.m_basis #m_max: number of basis function per atom, m_basis: number bands considered
         matrices.get_interals()
         matrices.get_H_blocks()
         matrices.get_S_blocks()
@@ -37,7 +40,7 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
-        # matrices.overwrite_matrices()
+        matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
         matrices.check_eigval()
 
@@ -127,7 +130,7 @@ class Simulation:
         rho = self.solution
         return np.einsum('tkab,kbc -> tkac', rho, J)
     
-    def calculate_spectrum(self, zoom=None): #TODO fix unit/dimension conversions
+    def calculate_spectrum(self, zoom=None): 
         N = self.n_steps
         dt = self.t_end/N
         omega = np.array([np.exp(-1j * 2 * n *np.pi /N) for n in range(self.n_steps)])
@@ -152,6 +155,7 @@ class Simulation:
         ax.set_ylabel('S (normalized)')
         secax = ax.secondary_xaxis('top', functions=(energy_to_harmonic, harmonic_to_energy))
         secax.set_xlabel('Harmonic order')
+        secax.xaxis.set_major_locator(MaxNLocator(integer=True))
         if zoom != None:
             ax.set_xlim(0,zoom)
         plt.savefig('hhg_spectrum.png')
@@ -194,14 +198,16 @@ class Plot:
     
     def get_heatmap_rho(self):
         rho = np.abs(self.X_inv @ self.solution @ self.X)
-        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(19,9), sharex=True, constrained_layout=True)
+        # rho = rho[350:1650,:,...]
+        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(9,6), sharex=True, constrained_layout=True)
         k_angstrom = self.k_list/constants.physical_constants['atomic unit of length'][0] * constants.angstrom
         time_fs = au_to_fs(self.time)
+        # time_fs = time_fs[350:1650]
         for i in range(self.m_basis):
             im = axs[self.m_basis- i-1].pcolormesh(time_fs, k_angstrom, rho[:,:,i,i].T, shading='auto')
             cbar = fig.colorbar(im, ax=axs[self.m_basis - i-1], orientation='vertical')
             axs[self.m_basis - i-1].set_ylabel(r'k / $\AA^{-1}$')
-            cbar.set_label(rf'$|c_{i}|^2$', loc='center')
+            cbar.set_label(rf'$\rho_{{{i}{i}}}$', loc='center')
         axs[self.m_basis].plot(au_to_fs(self.time), au_to_Vpm(self.E_field)*1e-9)
         axs[self.m_basis].set_xlabel('t / fs')
         axs[self.m_basis].set_ylabel(r'E / V ${nm}^{-1}$')
@@ -264,18 +270,26 @@ def gaussian_sine(t, omega, sigma, t_center, E0):
 
 
 if __name__ =="__main__":
-    sim = Simulation(t_end=80, n_steps=2000)
-    sim.define_pulse(sigma=5, lam=740, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-    sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, scale2=0.19, shift=0.4, T2=5, vb_index=2)
-    sim.integrate() 
+    USE_PICKLE = False 
+    if USE_PICKLE:
+        with open("simulation.pkl", "rb") as f:
+            sim = pickle.load(f)
+    else:
+        sim = Simulation(t_end=80, n_steps=2000)
+        sim.define_pulse(sigma=10, lam=2000, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
+        sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1) # system 2 (1 without dephasing)
+        sim.integrate() 
+        with open("simulation.pkl", "wb") as f:
+            pickle.dump(sim, f)
+    print(np.shape(sim.solution))
     results = Plot(sim)
     results.get_heatmap_rho()
     sim.get_current()
     results = Plot(sim)
     results.plot_current()
-    sim.calculate_spectrum(zoom=20)
+    sim.calculate_spectrum(zoom=10)
     results.plot_density_matrix(k_index=0)
 
 
-    # sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1)
-    # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(13), scale_H=0.19, m_max=4, T2=5, scale2=0.19, vb_index=2)
+        # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(13), scale_H=0.19, m_max=4, T2=5, scale2=0.19, vb_index=2) # system 3
+    # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, scale2=0.19, shift=0.4, T2=5, vb_index=2) # system 4
