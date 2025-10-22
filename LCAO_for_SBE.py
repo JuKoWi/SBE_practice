@@ -189,13 +189,13 @@ class LCAOMatrices:
         bands = bands.T
         k_angstrom = self.k_list/const.physical_constants['atomic unit of length'][0]* const.angstrom
         bands_eV = bands * const.physical_constants['Hartree energy in eV'][0]
-        print(f'Eg = {np.min(bands_eV[1] - bands_eV[0])}')
+        print(f'Eg = {np.min(bands_eV[2] - bands_eV[1])}')
         plt.figure(figsize=(9, 6))
         for m in range(self.m_basis):
             plt.plot(k_angstrom, bands_eV[m])
         plt.xlabel(r"k / $\AA^{-1}$")
         plt.ylabel(r"E / eV")
-        plt.savefig('construted_band_structure.png')
+        plt.savefig('construted_band_structure.pdf', dpi=1200)
         plt.show()
     
     def overwrite_matrices(self):

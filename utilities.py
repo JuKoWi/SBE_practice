@@ -30,7 +30,7 @@ def make_supercell(x_space, V_unit, n_super):
     plt.plot(x_angstrom, V_eV)
     plt.xlabel(r'x / $\AA$')
     plt.ylabel(r'V / eV')
-    plt.savefig('potential_supercell.png')
+    plt.savefig('potential_supercell.pdf', dpi=1200)
     return long_space, long_V # returns array where the last point is not symmetry equivalent to first point
 
 

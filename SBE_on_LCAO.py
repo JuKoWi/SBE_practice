@@ -26,7 +26,6 @@ class Simulation:
         self.pulse = Field(time=self.time, sigma=sigma, lam=lam, t_center=t_center, E0=E0)
 
     def use_LCAO(self, num_k, a, scale_H, m_max, scale2, vb_index, shift=0, T2=0):
-        plt.savefig('potential_supercell.png')
         self.T2 = fs_to_au(T2)
         self.a = angstrom_to_bohr(a)
         self.num_k = num_k
@@ -40,7 +39,7 @@ class Simulation:
         matrices.get_transform_S()
         matrices.get_D_orth()
         matrices.get_H_orth()
-        matrices.overwrite_matrices()
+        # matrices.overwrite_matrices()
         matrices.get_diagonalize_H()
         matrices.check_eigval()
 
@@ -141,7 +140,7 @@ class Simulation:
         energy_eV = au_to_ev(ang_freq)
         result = result[:len(result)//2]
 
-        fix, ax = plt.subplots(figsize=(9,6))
+        fix, ax = plt.subplots(figsize=(16,9))
         def energy_to_harmonic(E):
             return E / au_to_ev(self.pulse.omega)
         
@@ -158,7 +157,7 @@ class Simulation:
         secax.xaxis.set_major_locator(MaxNLocator(integer=True))
         if zoom != None:
             ax.set_xlim(0,zoom)
-        plt.savefig('hhg_spectrum.png')
+        plt.savefig('hhg_spectrum.pdf')
         plt.show() 
         
 
@@ -199,7 +198,7 @@ class Plot:
     def get_heatmap_rho(self):
         rho = np.abs(self.X_inv @ self.solution @ self.X)
         # rho = rho[350:1650,:,...]
-        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(9,6), sharex=True, constrained_layout=True)
+        fig, axs = plt.subplots(self.m_basis+1,1, figsize=(18,8), sharex=True, constrained_layout=True)
         k_angstrom = self.k_list/constants.physical_constants['atomic unit of length'][0] * constants.angstrom
         time_fs = au_to_fs(self.time)
         # time_fs = time_fs[350:1650]
@@ -208,10 +207,13 @@ class Plot:
             cbar = fig.colorbar(im, ax=axs[self.m_basis - i-1], orientation='vertical')
             axs[self.m_basis - i-1].set_ylabel(r'k / $\AA^{-1}$')
             cbar.set_label(rf'$\rho_{{{i}{i}}}$', loc='center')
+            cbar.formatter.set_scientific(False)
+            cbar.formatter.set_useOffset(False)
+            cbar.update_ticks()
         axs[self.m_basis].plot(au_to_fs(self.time), au_to_Vpm(self.E_field)*1e-9)
         axs[self.m_basis].set_xlabel('t / fs')
         axs[self.m_basis].set_ylabel(r'E / V ${nm}^{-1}$')
-        plt.savefig('population_heatmap.png')
+        plt.savefig('population_heatmap.png', dpi=1200)
         plt.show()
     
     def plot_field_E(self):
@@ -270,14 +272,14 @@ def gaussian_sine(t, omega, sigma, t_center, E0):
 
 
 if __name__ =="__main__":
-    USE_PICKLE = False 
+    USE_PICKLE = True 
     if USE_PICKLE:
         with open("simulation.pkl", "rb") as f:
             sim = pickle.load(f)
     else:
         sim = Simulation(t_end=80, n_steps=2000)
         sim.define_pulse(sigma=10, lam=2000, t_center=40, E0=2e9) #E_0 = 1e11 roundabout corresponding to I = 1.5e14 W/cm^2
-        sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1) # system 2 (1 without dephasing)
+        sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(13), scale_H=0.19, m_max=4, T2=5, scale2=0.19, vb_index=2) # system 3
         sim.integrate() 
         with open("simulation.pkl", "wb") as f:
             pickle.dump(sim, f)
@@ -287,9 +289,9 @@ if __name__ =="__main__":
     sim.get_current()
     results = Plot(sim)
     results.plot_current()
-    sim.calculate_spectrum(zoom=10)
+    sim.calculate_spectrum(zoom=15)
     results.plot_density_matrix(k_index=0)
 
 
-        # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(13), scale_H=0.19, m_max=4, T2=5, scale2=0.19, vb_index=2) # system 3
-    # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(20), scale_H=0.21, m_max=2, scale2=0.19, shift=0.4, T2=5, vb_index=2) # system 4
+        # sim.use_LCAO(num_k=1000, a=1.3, scale_H=0.21, m_max=2, T2=5, shift=0, scale2=0.19, vb_index=1) # system 2 (1 without dephasing)
+        # sim.use_LCAO(num_k=1000, a=bohr_to_angstrom(16), scale_H=0.25, m_max=2, scale2=0.22, shift=0.4, T2=5, vb_index=2) # system 4
